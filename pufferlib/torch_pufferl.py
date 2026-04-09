@@ -6,6 +6,7 @@ import os
 import glob
 import time
 import ctypes
+import pickle
 from collections import defaultdict
 
 import numpy as np
@@ -46,12 +47,12 @@ def _entropy(logits):
     p_log_p = logits * logits_to_probs(logits)
     return -p_log_p.sum(-1)
 
-def sample_logits(logits, action=None):
+def sample_logits(logits, action=None, deterministic=False):
     is_discrete = isinstance(logits, torch.Tensor)
     if isinstance(logits, torch.distributions.Normal):
         batch = logits.loc.shape[0]
         if action is None:
-            action = logits.sample().view(batch, -1)
+            action = (logits.loc if deterministic else logits.sample()).view(batch, -1)
         log_probs = logits.log_prob(action.view(batch, -1)).sum(1)
         logits_entropy = logits.entropy().view(batch, -1).sum(1)
         return action, log_probs, logits_entropy
@@ -68,9 +69,12 @@ def sample_logits(logits, action=None):
     probs = logits_to_probs(logits)
 
     if action is None:
-        probs = torch.nan_to_num(probs, 1e-8, 1e-8, 1e-8)
-        action = torch.multinomial(probs.reshape(-1, probs.shape[-1]), 1, replacement=True).int()
-        action = action.reshape(probs.shape[:-1])
+        if deterministic:
+            action = logits.argmax(dim=-1).int()
+        else:
+            probs = torch.nan_to_num(probs, 1e-8, 1e-8, 1e-8)
+            action = torch.multinomial(probs.reshape(-1, probs.shape[-1]), 1, replacement=True).int()
+            action = action.reshape(probs.shape[:-1])
     else:
         batch = logits[0].shape[0]
         action = action.view(batch, -1).T
@@ -201,7 +205,6 @@ class PuffeRL:
         device = self.device
         horizon = config['horizon']
 
-        self.state = tuple(torch.zeros_like(s) for s in self.state) if self.state else ()
         o = self.vec_obs
         r = torch.zeros(self.total_agents, device=device)
         d = torch.zeros(self.total_agents, device=device)
@@ -211,10 +214,17 @@ class PuffeRL:
         for t in range(horizon):
             o_device = torch.as_tensor(o, device=device)
 
+            if self.state and t == 0 and self.args.get('reset_state'):
+                self.state = tuple(torch.zeros_like(s) for s in self.state)
+            elif self.state and torch.any(d != 0):
+                reset_mask = (torch.as_tensor(d, device=device) != 0).view(1, -1, *([1] * (self.state[0].ndim - 2)))
+                self.state = tuple(torch.where(reset_mask, torch.zeros_like(s), s) for s in self.state)
+
             prof.mark(1)
             with torch.no_grad():
                 logits, value, state = self.policy.forward_eval(o_device, self.state)
-                action, logprob, _ = sample_logits(logits)
+                action, logprob, _ = sample_logits(
+                    logits, deterministic=self.args.get('deterministic_eval', False))
             prof.mark(2)
 
             with torch.no_grad():
@@ -227,7 +237,7 @@ class PuffeRL:
                 self.values[t] = value.flatten()
 
             prof.mark(2)
-            actions_flat = (action.T if action.dim() > 1 else action.unsqueeze(-1)).to(dtype=torch.float32).contiguous()
+            actions_flat = (action if action.dim() > 1 else action.unsqueeze(-1)).to(dtype=torch.float32).contiguous()
             if self.gpu:
                 actions_flat = actions_flat.cuda()
                 self._vec.gpu_step(actions_flat.data_ptr())
@@ -386,9 +396,7 @@ class PuffeRL:
         torch.save(self.policy.state_dict(), path)
 
     def load_weights(self, path):
-        state_dict = torch.load(path, map_location=self.device)
-        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
-        self.policy.load_state_dict(state_dict)
+        _load_policy_checkpoint(self.policy, path, self.device)
 
     def render(self, env_id=0):
         self._vec.render(env_id)
@@ -467,6 +475,112 @@ class Profile:
         self.accum = [0.0] * Profile.NUM
         return out
 
+def _native_checkpoint_num_floats(policy):
+    encoder = policy.encoder.encoder
+    decoder = policy.decoder
+    network = policy.network
+
+    if not isinstance(network, pufferlib.models.MinGRU):
+        return None
+    if not getattr(decoder, 'is_continuous', False):
+        return None
+
+    hidden_size = encoder.weight.shape[0]
+    obs_size = encoder.weight.shape[1]
+    num_actions = decoder.decoder_logstd.shape[1]
+    num_layers = network.num_layers
+
+    return (
+        hidden_size * obs_size +
+        (num_actions + 1) * hidden_size +
+        num_actions +
+        num_layers * (3 * hidden_size * hidden_size)
+    )
+
+def _align_native_cursor(cursor):
+    return (cursor + 7) & ~7
+
+def _load_native_checkpoint(policy, path, device):
+    expected = _native_checkpoint_num_floats(policy)
+    if expected is None:
+        raise RuntimeError(
+            'Native .bin import is only supported for the default continuous '
+            'encoder/decoder/MinGRU policy.'
+        )
+
+    file_weights = np.fromfile(path, dtype=np.float32)
+    if file_weights.size != expected:
+        raise RuntimeError(
+            f'Native checkpoint size mismatch: expected {expected} float32 values, '
+            f'got {file_weights.size}'
+        )
+    # Match src/puffernet.h load_weights/get_weights_aligned: tensors are read
+    # from a zero-padded buffer and aligned to 8-float boundaries where needed.
+    weights = np.concatenate([file_weights, np.zeros(7, dtype=np.float32)])
+
+    encoder = policy.encoder.encoder
+    decoder = policy.decoder
+    network = policy.network
+    hidden_size = encoder.weight.shape[0]
+    obs_size = encoder.weight.shape[1]
+    num_actions = decoder.decoder_logstd.shape[1]
+
+    cursor = 0
+    state_dict = {}
+
+    n = hidden_size * obs_size
+    state_dict['encoder.encoder.weight'] = torch.from_numpy(
+        weights[cursor:cursor+n].reshape(hidden_size, obs_size)
+    )
+    cursor += n
+    state_dict['encoder.encoder.bias'] = torch.zeros_like(encoder.bias)
+
+    n = (num_actions + 1) * hidden_size
+    decoder_weight = weights[cursor:cursor+n].reshape(num_actions + 1, hidden_size)
+    cursor += n
+    state_dict['decoder.decoder_mean.weight'] = torch.from_numpy(decoder_weight[:num_actions])
+    state_dict['decoder.decoder_mean.bias'] = torch.zeros_like(decoder.decoder_mean.bias)
+    state_dict['decoder.value_function.weight'] = torch.from_numpy(
+        decoder_weight[num_actions:num_actions+1]
+    )
+    state_dict['decoder.value_function.bias'] = torch.zeros_like(decoder.value_function.bias)
+
+    n = num_actions
+    state_dict['decoder.decoder_logstd'] = torch.from_numpy(
+        weights[cursor:cursor+n].reshape(1, num_actions)
+    )
+    cursor += n
+    cursor = _align_native_cursor(cursor)
+
+    for i in range(network.num_layers):
+        n = 3 * hidden_size * hidden_size
+        state_dict[f'network.layers.{i}.weight'] = torch.from_numpy(
+            weights[cursor:cursor+n].reshape(3 * hidden_size, hidden_size)
+        )
+        cursor += n
+
+    expected_cursor = _align_native_cursor(
+        hidden_size * obs_size + (num_actions + 1) * hidden_size + num_actions
+    ) + network.num_layers * (3 * hidden_size * hidden_size)
+    if cursor != expected_cursor:
+        raise RuntimeError(
+            f'Native checkpoint parsing error: consumed {cursor} values, expected {expected_cursor}'
+        )
+
+    state_dict = {k: v.to(device=device) for k, v in state_dict.items()}
+    policy.load_state_dict(state_dict, strict=True)
+
+def _load_policy_checkpoint(policy, path, device):
+    try:
+        state_dict = torch.load(path, map_location=device)
+        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+        policy.load_state_dict(state_dict)
+        return
+    except (pickle.UnpicklingError, RuntimeError, EOFError, AttributeError, ValueError, TypeError):
+        pass
+
+    _load_native_checkpoint(policy, path, device)
+
 def load_policy(args, vec):
     import pufferlib.models
     policy_kwargs = args['policy']
@@ -492,9 +606,7 @@ def load_policy(args, vec):
         else:
             raise ValueError('load_id requires --wandb')
 
-        state_dict = torch.load(path, map_location=device)
-        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
-        policy.load_state_dict(state_dict)
+        _load_policy_checkpoint(policy, path, device)
 
     load_path = args['load_model_path']
     if load_path == 'latest':
@@ -503,9 +615,6 @@ def load_policy(args, vec):
         load_path = max(candidates, key=os.path.getctime)
 
     if load_path is not None:
-        state_dict = torch.load(load_path, map_location=device)
-        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
-        policy.load_state_dict(state_dict)
+        _load_policy_checkpoint(policy, load_path, device)
 
     return policy
-

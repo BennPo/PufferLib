@@ -4,6 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def _native_int(value):
+    return int(value)
+
 class Policy(nn.Module):
     def __init__(self, encoder, decoder, network):
         super().__init__()
@@ -30,6 +33,7 @@ class Policy(nn.Module):
 class DefaultEncoder(nn.Module):
     def __init__(self, obs_size, hidden_size=128):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
         self.encoder = nn.Linear(obs_size, hidden_size)
 
     def forward(self, observations):
@@ -38,6 +42,7 @@ class DefaultEncoder(nn.Module):
 class DefaultDecoder(nn.Module):
     def __init__(self, nvec, hidden_size=128):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
         self.nvec = tuple(nvec)
         self.is_continuous = sum(nvec) == len(nvec)
 
@@ -66,6 +71,8 @@ class DefaultDecoder(nn.Module):
 class MLP(nn.Module):
     def __init__(self, hidden_size, num_layers=1, **kwargs):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
+        num_layers = _native_int(num_layers)
         layers = []
         for _ in range(num_layers):
             layers += [nn.Linear(hidden_size, hidden_size), nn.GELU()]
@@ -84,6 +91,8 @@ class MinGRU(nn.Module):
     # https://arxiv.org/abs/2410.01201v1
     def __init__(self, hidden_size, num_layers=1, **kwargs):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
+        num_layers = _native_int(num_layers)
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.layers = nn.ModuleList([
@@ -132,6 +141,8 @@ class MinGRU(nn.Module):
 class LSTM(nn.Module):
     def __init__(self, hidden_size, num_layers=1, **kwargs):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
+        num_layers = _native_int(num_layers)
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
@@ -176,6 +187,8 @@ class LSTM(nn.Module):
 class GRU(nn.Module):
     def __init__(self, hidden_size, num_layers=1, **kwargs):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
+        num_layers = _native_int(num_layers)
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
@@ -227,6 +240,7 @@ class NatureEncoder(nn.Module):
     def __init__(self, env, hidden_size=512, framestack=1, flat_size=64*7*7,
             channels_last=False, downsample=1, **kwargs):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
         self.channels_last = channels_last
         self.downsample = downsample
         self.network = nn.Sequential(
@@ -286,6 +300,8 @@ class ImpalaEncoder(nn.Module):
     '''IMPALA ResNet encoder (Espeholt et al. 2018). Returns [batch, hidden_size].'''
     def __init__(self, env, hidden_size=256, cnn_width=16, **kwargs):
         super().__init__()
+        hidden_size = _native_int(hidden_size)
+        cnn_width = _native_int(cnn_width)
         h, w, c = env.single_observation_space.shape
         shape = (c, h, w)
         conv_seqs = []

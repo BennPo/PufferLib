@@ -402,6 +402,7 @@ def eval(env_name, args=None, load_path=None):
     '''Evaluate a trained policy. Supports both native and --slowly torch backends.'''
     args = args or load_config(env_name)
     args['reset_state'] = False
+    args['deterministic_eval'] = True
     args['train']['horizon'] = 1
 
     backend = _resolve_backend(args)
@@ -421,9 +422,39 @@ def eval(env_name, args=None, load_path=None):
         backend.load_weights(pufferl, load_path)
         print(f'Loaded weights from {load_path}')
 
+    eval_iter = 0
     while True:
-        backend.render(pufferl, 0)
+        render_ms = 0.0
+        if args.get('render_mode') != 'None':
+            t_render = time.perf_counter()
+            backend.render(pufferl, 0)
+            render_ms = (time.perf_counter() - t_render) * 1000.0
+
+        t_rollout = time.perf_counter()
         backend.rollouts(pufferl)
+        rollout_ms = (time.perf_counter() - t_rollout) * 1000.0
+        eval_iter += 1
+
+        try:
+            logs = backend.log(pufferl)
+            flat_logs = dict(unroll_nested_dict(logs))
+            frame_ms = render_ms + rollout_ms
+            if frame_ms > 0:
+                flat_logs['perf/frame_fps'] = 1000.0 / frame_ms
+            flat_logs['perf/render'] = render_ms / 1000.0
+            flat_logs['perf/rollout_wall'] = rollout_ms / 1000.0
+            debug_keys = [
+                'perf/frame_fps', 'perf/render', 'perf/rollout_wall',
+                'perf/eval_gpu', 'perf/eval_env',
+                'env/score', 'env/perf', 'env/oob', 'env/timeout',
+                'env/ema_dist', 'env/ema_vel', 'env/ema_omega', 'env/n',
+            ]
+            summary = ', '.join(
+                f'{k}={flat_logs[k]:.6g}' for k in debug_keys if k in flat_logs
+            )
+            print(f'[eval {eval_iter}] {summary}')
+        except Exception as e:
+            print(f'[eval {eval_iter}] log_error={e}')
 
     backend.close(pufferl)
 
