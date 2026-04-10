@@ -146,6 +146,8 @@ typedef struct {
     float score;
     float collisions;
     int rings_passed;
+    float ring_collisions;
+    int lap;
     float hover_score;
     float prev_potential;
     float hover_ema;
@@ -473,25 +475,6 @@ static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_r
     }
 }
 
-static inline Drone* nearest_drone(Drone* agent, Drone* others, int num_agents) {
-    float min_dist = FLT_MAX;
-    Drone* nearest = NULL;
-
-    for (int i = 0; i < num_agents; i++) {
-        Drone* other = &others[i];
-        if (other == agent) continue;
-
-        float dist = norm3(sub3(agent->state.pos, other->state.pos));
-
-        if (dist < min_dist) {
-            min_dist = dist;
-            nearest = other;
-        }
-    }
-
-    return nearest;
-}
-
 static inline int check_ring(Drone* drone, Target* ring) {
     // previous dot product negative if on the 'entry' side of the ring's plane
     float prev_dot = dot3(sub3(drone->prev_pos, ring->pos), ring->normal);
@@ -521,16 +504,6 @@ static inline int check_ring(Drone* drone, Target* ring) {
     return 0;
 }
 
-static inline bool check_collision(Drone* agent, Drone* others, int num_agents) {
-    if (num_agents <= 1) return false;
-
-    Drone* nearest = nearest_drone(agent, others, num_agents);
-    Vec3 to_nearest = sub3(agent->state.pos, nearest->state.pos);
-    float nearest_dist = norm3(to_nearest);
-
-    return nearest_dist < 0.1f;
-}
-
 float hover_potential(Drone* agent, float hover_dist, float hover_omega, float hover_vel) {
     float dist = norm3(sub3(agent->target->pos, agent->state.pos));
     float vel = norm3(agent->state.vel);
@@ -556,6 +529,47 @@ float check_hover(Drone* agent, float hover_dist, float hover_omega, float hover
     return score > 0.0f ? score : 0.0f;
 }
 
+static inline Target* next_race_target(Drone* agent) {
+    if (agent->buffer == NULL || agent->buffer_size <= 0) {
+        return agent->target;
+    }
+
+    int next_idx = (agent->buffer_idx + 1) % agent->buffer_size;
+    return &agent->buffer[next_idx];
+}
+
+static inline float race_target_max_dist(Target* ring, float race_oob_radius) {
+    float max_dist = 0.0f;
+    float xs[2] = {-race_oob_radius, race_oob_radius};
+    float ys[2] = {-race_oob_radius, race_oob_radius};
+    float zs[2] = {-MARGIN_Z, MARGIN_Z};
+
+    for (int xi = 0; xi < 2; xi++) {
+        for (int yi = 0; yi < 2; yi++) {
+            for (int zi = 0; zi < 2; zi++) {
+                Vec3 corner = {xs[xi], ys[yi], zs[zi]};
+                float dist = norm3(sub3(corner, ring->pos));
+                if (dist > max_dist) {
+                    max_dist = dist;
+                }
+            }
+        }
+    }
+
+    return max_dist;
+}
+
+static inline float race_target_proximity(Vec3 pos, Target* ring, float race_oob_radius) {
+    float max_dist = race_target_max_dist(ring, race_oob_radius);
+    if (max_dist <= 1e-6f) {
+        return 1.0f;
+    }
+
+    float dist = norm3(sub3(pos, ring->pos));
+    float proximity = 1.0f - dist / max_dist;
+    return clampf(proximity, 0.0f, 1.0f);
+}
+
 void compute_drone_observations(Drone* agent, float* observations) {
     int idx = 0;
 
@@ -568,6 +582,12 @@ void compute_drone_observations(Drone* agent, float* observations) {
     Vec3 linear_vel_body = quat_rotate(q_inv, agent->state.vel);
     Vec3 to_target_world = sub3(agent->target->pos, agent->state.pos);
     Vec3 to_target = quat_rotate(q_inv, to_target_world);
+    Vec3 to_next_target = (Vec3){0.0f, 0.0f, 0.0f};
+    if (agent->buffer != NULL && agent->buffer_size > 1) {
+        Target* next_target = next_race_target(agent);
+        Vec3 to_next_target_world = sub3(next_target->pos, agent->state.pos);
+        to_next_target = quat_rotate(q_inv, to_next_target_world);
+    }
 
     // we should probably clamp the overall velocity
     float denom = agent->params.max_vel * 1.7320508f; // sqrt(3)
@@ -590,9 +610,9 @@ void compute_drone_observations(Drone* agent, float* observations) {
     observations[idx++] = tanhf(to_target.y * 0.1f);
     observations[idx++] = tanhf(to_target.z * 0.1f);
 
-    observations[idx++] = tanhf(to_target.x * 10.0f);
-    observations[idx++] = tanhf(to_target.y * 10.0f);
-    observations[idx++] = tanhf(to_target.z * 10.0f);
+    observations[idx++] = tanhf(to_next_target.x * 0.1f);
+    observations[idx++] = tanhf(to_next_target.y * 0.1f);
+    observations[idx++] = tanhf(to_next_target.z * 0.1f);
 
     Vec3 normal_body = quat_rotate(q_inv, agent->target->normal);
     observations[idx++] = normal_body.x;
