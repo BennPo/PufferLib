@@ -45,10 +45,6 @@ struct DroneEnv {
     float hover_dist;
     float hover_omega;
     float hover_vel;
-
-    // race task parameters
-    int laps_per_episode;
-    float race_oob_radius;
 };
 
 void init(DroneEnv* env) {
@@ -68,8 +64,7 @@ void add_log(DroneEnv* env, int idx, bool oob, bool timeout) {
     Drone* agent = &env->agents[idx];
     float race_progress = 0.0f;
     if (agent->buffer_size > 0) {
-        race_progress = (float)(agent->lap * agent->buffer_size + agent->buffer_idx);
-        race_progress /= (float)agent->buffer_size;
+        race_progress = agent->prev_race_progress / (float)agent->buffer_size;
     }
 
     env->log.episode_return += agent->episode_return;
@@ -114,7 +109,7 @@ void reset_agent(DroneEnv* env, Drone* agent, int idx) {
     agent->collisions = 0.0f;
     agent->rings_passed = 0;
     agent->ring_collisions = 0.0f;
-    agent->lap = 0;
+    agent->prev_race_progress = 0.0f;
     agent->score = 0.0f;
     agent->hover_score = 0.0f;
     agent->hover_ema = 0.0f;
@@ -149,6 +144,12 @@ void reset_agent(DroneEnv* env, Drone* agent, int idx) {
     }
 }
 
+void sync_agent_progress(DroneEnv* env, Drone* agent) {
+    if (env->task == RACE) {
+        agent->prev_race_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
+    }
+}
+
 void c_reset(DroneEnv* env) {
     if (env->task == RACE) {
         reset_rings(&env->rng, env->ring_buffer, env->max_rings);
@@ -158,6 +159,7 @@ void c_reset(DroneEnv* env) {
         Drone* agent = &env->agents[i];
         reset_agent(env, agent, i);
         set_target(&env->rng, env->task, env->agents, i, env->num_agents, env->hover_target_dist);
+        sync_agent_progress(env, agent);
     }
 
     compute_observations(env);
@@ -175,32 +177,24 @@ void c_step(DroneEnv* env) {
 
         bool oob = false;
         bool timeout = (agent->episode_length >= HORIZON);
-        bool finished = false;
         float reward = 0.0f;
         if (env->task == RACE) {
-            oob = fabsf(agent->state.pos.x) > env->race_oob_radius
-               || fabsf(agent->state.pos.y) > env->race_oob_radius
+            oob = fabsf(agent->state.pos.x) > MARGIN_X
+               || fabsf(agent->state.pos.y) > MARGIN_Y
                || fabsf(agent->state.pos.z) > MARGIN_Z;
-
-            Target* active_ring = agent->target;
-            float prox_before = race_target_proximity(agent->prev_pos, active_ring, env->race_oob_radius);
 
             int ring_state = check_ring(agent, agent->target);
             if (ring_state == 1) {
                 agent->rings_passed += 1;
                 agent->buffer_idx = (agent->buffer_idx + 1) % agent->buffer_size;
-                if (agent->buffer_idx == 0) {
-                    agent->lap += 1;
-                    if (env->laps_per_episode > 0 && agent->lap >= env->laps_per_episode) {
-                        finished = true;
-                    }
-                }
                 set_target_race(agent);
             } else if (ring_state == -1) {
                 agent->ring_collisions += 1.0f;
             }
-            float prox_after = race_target_proximity(agent->state.pos, agent->target, env->race_oob_radius);
-            reward = prox_after - prox_before + (ring_state == 1 ? 1.0f : 0.0f);
+
+            float current_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
+            reward = current_progress - agent->prev_race_progress;
+            agent->prev_race_progress = current_progress;
         } else {
             oob = norm3(sub3(agent->target->pos, agent->state.pos)) > (env->hover_target_dist + 1.0f);
 
@@ -227,13 +221,14 @@ void c_step(DroneEnv* env) {
         agent->episode_return += reward;
         env->rewards[i] = reward;
 
-        bool reset = oob || timeout || finished;
+        bool reset = oob || timeout;
         env->terminals[i] = reset ? 1.0f : 0.0f;
 
         if (reset) {
             add_log(env, i, oob, timeout);
             reset_agent(env, agent, i);
             set_target(&env->rng, env->task, env->agents, i, env->num_agents, env->hover_target_dist);
+            sync_agent_progress(env, agent);
         }
     }
 

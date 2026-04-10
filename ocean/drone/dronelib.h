@@ -140,14 +140,13 @@ typedef struct {
     int buffer_size;
 
     // logging utils
-    float last_dist_reward;
+    float prev_race_progress;
     float episode_return;
     int episode_length;
     float score;
     float collisions;
     int rings_passed;
     float ring_collisions;
-    int lap;
     float hover_score;
     float prev_potential;
     float hover_ema;
@@ -538,29 +537,14 @@ static inline Target* next_race_target(Drone* agent) {
     return &agent->buffer[next_idx];
 }
 
-static inline float race_target_max_dist(Target* ring, float race_oob_radius) {
-    float max_dist = 0.0f;
-    float xs[2] = {-race_oob_radius, race_oob_radius};
-    float ys[2] = {-race_oob_radius, race_oob_radius};
-    float zs[2] = {-MARGIN_Z, MARGIN_Z};
-
-    for (int xi = 0; xi < 2; xi++) {
-        for (int yi = 0; yi < 2; yi++) {
-            for (int zi = 0; zi < 2; zi++) {
-                Vec3 corner = {xs[xi], ys[yi], zs[zi]};
-                float dist = norm3(sub3(corner, ring->pos));
-                if (dist > max_dist) {
-                    max_dist = dist;
-                }
-            }
-        }
-    }
-
-    return max_dist;
+static inline float race_target_max_dist(void) {
+    return sqrtf((2.0f * MARGIN_X) * (2.0f * MARGIN_X)
+               + (2.0f * MARGIN_Y) * (2.0f * MARGIN_Y)
+               + (2.0f * MARGIN_Z) * (2.0f * MARGIN_Z));
 }
 
-static inline float race_target_proximity(Vec3 pos, Target* ring, float race_oob_radius) {
-    float max_dist = race_target_max_dist(ring, race_oob_radius);
+static inline float race_target_proximity(Vec3 pos, Target* ring) {
+    float max_dist = race_target_max_dist();
     if (max_dist <= 1e-6f) {
         return 1.0f;
     }
@@ -568,6 +552,10 @@ static inline float race_target_proximity(Vec3 pos, Target* ring, float race_oob
     float dist = norm3(sub3(pos, ring->pos));
     float proximity = 1.0f - dist / max_dist;
     return clampf(proximity, 0.0f, 1.0f);
+}
+
+static inline float race_absolute_progress(Vec3 pos, int rings_passed, Target* ring) {
+    return (float)rings_passed + race_target_proximity(pos, ring);
 }
 
 void compute_drone_observations(Drone* agent, float* observations) {

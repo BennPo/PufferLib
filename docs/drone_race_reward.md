@@ -1,45 +1,59 @@
 # Drone Race Reward
 
-Use one reward only:
+Use one progress value:
 
 ```text
-reward = pass_bonus + proximity_after - proximity_before
+absolute_progress = ring_index + proximity_to_current_target
+```
+
+Then define reward as:
+
+```text
+reward = absolute_progress_after - absolute_progress_before
 ```
 
 Where:
 
-- `pass_bonus = 1` on a valid ring pass, otherwise `0`
-- `proximity` is a number in `[0, 1]` that measures how close the drone is to its current target ring
+- `ring_index` is the number of rings already passed
+- `proximity_to_current_target` is a number in `[0, 1]` measuring closeness to the current target ring
 
-## Proximity
-
-Define:
+For the current drone env, define:
 
 ```text
-proximity(pos, ring) = 1 - dist(pos, ring.pos) / max_dist(ring)
+dist = ||drone_pos - ring_pos||
+d_max = distance from one in-bounds corner to the opposite corner
+proximity_to_current_target = clamp(1 - dist / d_max, 0, 1)
 ```
 
-Where:
+The race bounds are:
 
-- `dist(pos, ring.pos)` is Euclidean distance to the ring center
-- `max_dist(ring)` is the maximum possible in-bounds distance from that ring to any corner of the race volume
+```text
+x in [-MARGIN_X, MARGIN_X]
+y in [-MARGIN_Y, MARGIN_Y]
+z in [-MARGIN_Z, MARGIN_Z]
+```
 
-Because `max_dist(ring)` is the true in-bounds maximum, `proximity` is naturally in `[0, 1]` while the drone is in bounds.
+So:
 
-## Pass Step
+```text
+d_max = sqrt((2 * MARGIN_X)^2
+           + (2 * MARGIN_Y)^2
+           + (2 * MARGIN_Z)^2)
+```
 
-When the drone passes a ring:
+This means:
 
-- add `+1`
-- advance the checkpoint index
-- compute `proximity_after` using the next ring
+- moving closer to the current ring gives positive reward
+- moving away gives negative reward
+- passing a ring gives a one-time jump of about `+1`
+- hovering in place gives about `0`
 
-So passing a ring gives an immediate jump in reward and then smoothly rewards getting closer to the following ring.
+When a ring is passed:
 
-## Why This Is Good
+- increment `ring_index`
+- switch the target to the next ring
+- compute `absolute_progress_after` using the new target
 
-- Passing two rings is worth more than passing one.
-- Moving closer helps, moving away hurts.
-- Oscillating in place does not create net reward.
-- No speed or omega reward terms are needed.
-- The reward directly matches course progress.
+Out of bounds should end the episode under standard terminal semantics.
+
+This is usually enough punishment by itself, because the drone loses all future reward.
