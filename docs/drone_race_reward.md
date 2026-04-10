@@ -22,7 +22,9 @@ For the current drone env, define:
 ```text
 dist = ||drone_pos - ring_pos||
 d_max = distance from one in-bounds corner to the opposite corner
-proximity_to_current_target = clamp(1 - dist / d_max, 0, 1)
+k = (d_max - 10) / 25
+proximity_to_current_target =
+    clamp(1 - log(1 + k * dist) / log(1 + k * d_max), 0, 1)
 ```
 
 The race bounds are:
@@ -41,10 +43,19 @@ d_max = sqrt((2 * MARGIN_X)^2
            + (2 * MARGIN_Z)^2)
 ```
 
+This choice of `k` gives:
+
+```text
+proximity_to_current_target(0) = 1
+proximity_to_current_target(5) = 0.5
+proximity_to_current_target(d_max) = 0
+```
+
 This means:
 
 - moving closer to the current ring gives positive reward
 - moving away gives negative reward
+- changes closer to the ring are weighted more heavily than changes far away
 - passing a ring gives a one-time jump of about `+1`
 - hovering in place gives about `0`
 

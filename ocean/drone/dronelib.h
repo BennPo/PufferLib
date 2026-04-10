@@ -550,7 +550,9 @@ static inline float race_target_proximity(Vec3 pos, Target* ring) {
     }
 
     float dist = norm3(sub3(pos, ring->pos));
-    float proximity = 1.0f - dist / max_dist;
+    // Choose k so a distance of 5 units maps to 0.5 proximity.
+    const float log_k = (max_dist - 10.0f) / 25.0f;
+    float proximity = 1.0f - log1pf(log_k * dist) / log1pf(log_k * max_dist);
     return clampf(proximity, 0.0f, 1.0f);
 }
 
