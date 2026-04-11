@@ -40,6 +40,9 @@ struct DroneEnv {
     float alpha_hover;
     float alpha_shaping;
     float alpha_omega;
+    float race_oob_penalty;
+    float race_boundary_penalty;
+    float race_boundary_margin;
     // hover task parameters
     float hover_target_dist;
     float hover_dist;
@@ -195,6 +198,12 @@ void c_step(DroneEnv* env) {
             float current_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
             reward = current_progress - agent->prev_race_progress;
             agent->prev_race_progress = current_progress;
+
+            float boundary_risk = race_boundary_risk(agent->state.pos, env->race_boundary_margin);
+            reward -= env->race_boundary_penalty * boundary_risk;
+            if (oob) {
+                reward -= env->race_oob_penalty;
+            }
         } else {
             oob = norm3(sub3(agent->target->pos, agent->state.pos)) > (env->hover_target_dist + 1.0f);
 

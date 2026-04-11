@@ -560,6 +560,20 @@ static inline float race_absolute_progress(Vec3 pos, int rings_passed, Target* r
     return (float)rings_passed + race_target_proximity(pos, ring);
 }
 
+static inline float race_boundary_risk(Vec3 pos, float safe_margin) {
+    if (safe_margin <= 1e-6f) {
+        return 0.0f;
+    }
+
+    float clearance_x = MARGIN_X - fabsf(pos.x);
+    float clearance_y = MARGIN_Y - fabsf(pos.y);
+    float clearance_z = MARGIN_Z - fabsf(pos.z);
+    float min_clearance = fminf(clearance_x, fminf(clearance_y, clearance_z));
+
+    float risk = 1.0f - clampf(min_clearance / safe_margin, 0.0f, 1.0f);
+    return risk * risk;
+}
+
 void compute_drone_observations(Drone* agent, float* observations) {
     int idx = 0;
 

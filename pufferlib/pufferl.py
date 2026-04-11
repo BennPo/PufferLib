@@ -166,11 +166,35 @@ def validate_config(args):
     assert minibatch_size <= horizon * total_agents, \
         f'minibatch_size {minibatch_size} > total_agents {total_agents} * horizon {horizon}'
 
-def _resolve_backend(args):
+_NATIVE_BACKEND_SYMBOLS = (
+    'create_pufferl',
+    'rollouts',
+    'log',
+    'close',
+    'load_weights',
+    'render',
+)
+
+def _supports_native_backend():
+    return all(hasattr(_C, attr) for attr in _NATIVE_BACKEND_SYMBOLS)
+
+def _resolve_backend(args, allow_torch_fallback=False):
     compiled_env = getattr(_C, 'env_name', None)
     assert compiled_env is None or compiled_env == args['env_name'], \
         f'build.sh was run for {compiled_env}, not {args["env_name"]}'
     if args.get('slowly'):
+        from pufferlib.torch_pufferl import PuffeRL
+        return PuffeRL
+    if _supports_native_backend():
+        return _C
+    if allow_torch_fallback:
+        missing = ', '.join(
+            attr for attr in _NATIVE_BACKEND_SYMBOLS if not hasattr(_C, attr))
+        print(
+            'WARNING: Native PufferLib runtime is incomplete '
+            f'(missing: {missing}). Falling back to the torch backend for eval. '
+            'Pass --slowly to select it explicitly.'
+        )
         from pufferlib.torch_pufferl import PuffeRL
         return PuffeRL
     return _C
@@ -405,7 +429,7 @@ def eval(env_name, args=None, load_path=None):
     args['deterministic_eval'] = True
     args['train']['horizon'] = 1
 
-    backend = _resolve_backend(args)
+    backend = _resolve_backend(args, allow_torch_fallback=True)
     pufferl = backend.create_pufferl(args)
 
     # Resolve load path

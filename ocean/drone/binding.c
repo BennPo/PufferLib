@@ -17,6 +17,9 @@ void my_init(Env* env, Dict* kwargs) {
     env->alpha_hover = dict_get(kwargs, "alpha_hover")->value;
     env->alpha_shaping = dict_get(kwargs, "alpha_shaping")->value;
     env->alpha_omega = dict_get(kwargs, "alpha_omega")->value;
+    env->race_oob_penalty = dict_get(kwargs, "race_oob_penalty")->value;
+    env->race_boundary_penalty = dict_get(kwargs, "race_boundary_penalty")->value;
+    env->race_boundary_margin = dict_get(kwargs, "race_boundary_margin")->value;
     env->hover_target_dist = dict_get(kwargs, "hover_target_dist")->value;
     env->hover_dist = dict_get(kwargs, "hover_dist")->value;
     env->hover_omega = dict_get(kwargs, "hover_omega")->value;
