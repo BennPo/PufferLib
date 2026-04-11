@@ -73,6 +73,10 @@ Hover and race also do not use the same OOB condition:
 - hover OOB means the drone drifted too far from the hover target
 - race OOB means the drone exited the world bounds
 
+Race now also treats ring-rim collisions as immediate episode resets. That
+means some early retrains may shift failure mass from `env/oob` into
+`env/ring_collisions` before clean passes improve.
+
 That means a hover checkpoint can transfer low-level stabilization without yet
 knowing how to navigate forward aggressively while staying in bounds. Early
 race finetuning often looks like:
@@ -113,6 +117,7 @@ python -m pufferlib.pufferl train drone \
 What success looks like:
 
 - `env/oob` starts trending down
+- `env/ring_collisions` starts trending down after an initial spike
 - `env/rings_passed` starts moving up
 - `env/score` and `env/perf` improve together
 - `env/timeout` begins to appear instead of every episode ending OOB
@@ -124,6 +129,11 @@ checkpoint that is more stable, not just more aggressive.
 If around halfway through the warm start `env/oob` is still above `0.95` and
 `env/timeout` is still near `0`, stop that run and try the next hover
 checkpoint instead of letting a clearly crash-dominated run continue.
+
+After the ring-collision reset change, also watch `env/ring_collisions`. It is
+normal for that metric to rise at first because former rim-hit episodes now end
+immediately. What matters is that it begins to fall as `env/rings_passed`
+improves.
 
 If both initial Stage 1 runs fail, use this fallback tuning ladder:
 
@@ -191,6 +201,7 @@ file.
 A good promotion checkpoint should show:
 
 - lower `env/oob`
+- lower `env/ring_collisions`
 - higher `env/rings_passed`
 - improving `env/score`
 - improving `env/perf`
@@ -259,6 +270,7 @@ Use the best checkpoint from the previous stage, not the most recent one.
 For this curriculum, "best" means:
 
 - it crashes less often
+- it collides with rings less often
 - it passes more rings
 - it improves score without keeping `env/oob` pinned near `1`
 - it starts producing non-trivial `env/timeout`
@@ -274,6 +286,8 @@ These patterns are common and worth checking early:
 
 - `env/oob` stuck at `1`
   - the policy is still not learning boundary-safe control
+- `env/ring_collisions` stuck high
+  - the policy is reaching rings but not learning clean passes
 - `loss/entropy` rising while score is flat
   - the policy is staying too random instead of becoming more precise
 - `env/rings_passed` rising a little while OOB stays pinned

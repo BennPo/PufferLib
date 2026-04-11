@@ -180,6 +180,7 @@ void c_step(DroneEnv* env) {
 
         bool oob = false;
         bool timeout = (agent->episode_length >= HORIZON);
+        bool ring_collision_reset = false;
         float reward = 0.0f;
         if (env->task == RACE) {
             oob = fabsf(agent->state.pos.x) > MARGIN_X
@@ -193,6 +194,7 @@ void c_step(DroneEnv* env) {
                 set_target_race(agent);
             } else if (ring_state == -1) {
                 agent->ring_collisions += 1.0f;
+                ring_collision_reset = true;
             }
 
             float current_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
@@ -230,7 +232,7 @@ void c_step(DroneEnv* env) {
         agent->episode_return += reward;
         env->rewards[i] = reward;
 
-        bool reset = oob || timeout;
+        bool reset = oob || timeout || ring_collision_reset;
         env->terminals[i] = reset ? 1.0f : 0.0f;
 
         if (reset) {

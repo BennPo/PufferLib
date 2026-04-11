@@ -87,6 +87,13 @@ When a ring is passed:
 - switch the target to the next ring
 - compute `absolute_progress_after` using the new target
 
+When the drone hits the ring rim instead of making a clean pass:
+
+- record a ring collision
+- end the episode under the same reset flow used for other race terminals
+- do not increment `ring_index`
+- do not switch the target to the next ring
+
 Out of bounds should end the episode under standard terminal semantics.
 In practice, terminal semantics alone were not enough for stable transfer from
 hover, because the policy could still learn to grab some race progress and then
