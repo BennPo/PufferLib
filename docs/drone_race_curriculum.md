@@ -21,6 +21,10 @@ This repo already supports continuing training from existing weights with
 - `config/drone.ini` defaults to hover with `task = 1`
 - hover is task `1`
 - race is task `7`
+- drone observations now have `26` floats, with the final three slots holding
+  normalized world position `x`, `y`, and `z`
+- older drone `.bin` checkpoints trained with the previous `23`-float
+  observation layout are intentionally incompatible with the current model
 - the current race reward is the progress-delta objective with explicit OOB
   penalty and boundary shaping described in
   `docs/drone_race_reward.md`

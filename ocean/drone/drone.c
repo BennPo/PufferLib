@@ -31,7 +31,7 @@ int main() {
     srand(time(NULL));
 
     DroneEnv* env = calloc(1, sizeof(DroneEnv));
-    size_t obs_size = 23;
+    size_t obs_size = 26;
 
     env->num_agents = 16;
     env->max_rings = 10;

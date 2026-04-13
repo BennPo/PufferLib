@@ -81,6 +81,18 @@ The default knobs live in `config/drone.ini`:
 - `race_boundary_penalty`
 - `race_boundary_margin`
 
+The drone observation now has `26` floats. The final three entries are signed
+normalized world position:
+
+```text
+pos.x / MARGIN_X
+pos.y / MARGIN_Y
+pos.z / MARGIN_Z
+```
+
+These values are clamped to `[-1, 1]` and are exposed on all drone tasks, not
+just race, so policies can directly reason about arena-relative position.
+
 When a ring is passed:
 
 - increment `ring_index`

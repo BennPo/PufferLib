@@ -628,4 +628,9 @@ void compute_drone_observations(Drone* agent, float* observations) {
     observations[idx++] = agent->state.rpms[1] / agent->params.max_rpm;
     observations[idx++] = agent->state.rpms[2] / agent->params.max_rpm;
     observations[idx++] = agent->state.rpms[3] / agent->params.max_rpm;
+
+    // Signed world position gives direct boundary context across all tasks.
+    observations[idx++] = clampf(agent->state.pos.x / MARGIN_X, -1.0f, 1.0f);
+    observations[idx++] = clampf(agent->state.pos.y / MARGIN_Y, -1.0f, 1.0f);
+    observations[idx++] = clampf(agent->state.pos.z / MARGIN_Z, -1.0f, 1.0f);
 }
