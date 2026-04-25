@@ -18,8 +18,13 @@ void my_init(Env* env, Dict* kwargs) {
     env->alpha_shaping = dict_get(kwargs, "alpha_shaping")->value;
     env->alpha_omega = dict_get(kwargs, "alpha_omega")->value;
     env->race_oob_penalty = dict_get(kwargs, "race_oob_penalty")->value;
-    env->race_boundary_penalty = dict_get(kwargs, "race_boundary_penalty")->value;
-    env->race_boundary_margin = dict_get(kwargs, "race_boundary_margin")->value;
+    env->race_difficulty = dict_get(kwargs, "race_difficulty")->value;
+    env->race_min_spacing = dict_get(kwargs, "race_min_spacing")->value;
+    env->race_max_spacing = dict_get(kwargs, "race_max_spacing")->value;
+    env->race_min_turn_angle = dict_get(kwargs, "race_min_turn_angle")->value;
+    env->race_max_turn_angle = dict_get(kwargs, "race_max_turn_angle")->value;
+    env->race_min_height_delta = dict_get(kwargs, "race_min_height_delta")->value;
+    env->race_max_height_delta = dict_get(kwargs, "race_max_height_delta")->value;
     env->hover_target_dist = dict_get(kwargs, "hover_target_dist")->value;
     env->hover_dist = dict_get(kwargs, "hover_dist")->value;
     env->hover_omega = dict_get(kwargs, "hover_omega")->value;

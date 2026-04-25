@@ -26,7 +26,7 @@ This repo already supports continuing training from existing weights with
 - older drone `.bin` checkpoints trained with the previous `23`-float
   observation layout are intentionally incompatible with the current model
 - the current race reward is the progress-delta objective with explicit OOB
-  penalty and boundary shaping described in
+  penalty described in
   `docs/drone_race_reward.md`
 - the current drone binding only exposes the env keys already present in
   `config/drone.ini`, so this curriculum should stay within the existing CLI

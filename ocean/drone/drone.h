@@ -41,8 +41,13 @@ struct DroneEnv {
     float alpha_shaping;
     float alpha_omega;
     float race_oob_penalty;
-    float race_boundary_penalty;
-    float race_boundary_margin;
+    float race_difficulty;
+    float race_min_spacing;
+    float race_max_spacing;
+    float race_min_turn_angle;
+    float race_max_turn_angle;
+    float race_min_height_delta;
+    float race_max_height_delta;
     // hover task parameters
     float hover_target_dist;
     float hover_dist;
@@ -106,7 +111,7 @@ void compute_observations(DroneEnv* env) {
     }
 }
 
-void reset_agent(DroneEnv* env, Drone* agent, int idx) {
+void reset_agent(DroneEnv* env, Drone* agent) {
     agent->episode_return = 0.0f;
     agent->episode_length = 0;
     agent->collisions = 0.0f;
@@ -153,14 +158,26 @@ void sync_agent_progress(DroneEnv* env, Drone* agent) {
     }
 }
 
+RaceConfig race_config(DroneEnv* env) {
+    return (RaceConfig){
+        env->race_difficulty,
+        env->race_min_spacing,
+        env->race_max_spacing,
+        env->race_min_turn_angle,
+        env->race_max_turn_angle,
+        env->race_min_height_delta,
+        env->race_max_height_delta,
+    };
+}
+
 void c_reset(DroneEnv* env) {
     if (env->task == RACE) {
-        reset_rings(&env->rng, env->ring_buffer, env->max_rings);
+        reset_rings(&env->rng, env->ring_buffer, env->max_rings, race_config(env));
     }
 
     for (int i = 0; i < env->num_agents; i++) {
         Drone* agent = &env->agents[i];
-        reset_agent(env, agent, i);
+        reset_agent(env, agent);
         set_target(&env->rng, env->task, env->agents, i, env->num_agents, env->hover_target_dist);
         sync_agent_progress(env, agent);
     }
@@ -201,8 +218,6 @@ void c_step(DroneEnv* env) {
             reward = current_progress - agent->prev_race_progress;
             agent->prev_race_progress = current_progress;
 
-            float boundary_risk = race_boundary_risk(agent->state.pos, env->race_boundary_margin);
-            reward -= env->race_boundary_penalty * boundary_risk;
             if (oob) {
                 reward -= env->race_oob_penalty;
             }
@@ -237,7 +252,7 @@ void c_step(DroneEnv* env) {
 
         if (reset) {
             add_log(env, i, oob, timeout);
-            reset_agent(env, agent, i);
+            reset_agent(env, agent);
             set_target(&env->rng, env->task, env->agents, i, env->num_agents, env->hover_target_dist);
             sync_agent_progress(env, agent);
         }

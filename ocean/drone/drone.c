@@ -40,6 +40,14 @@ int main() {
     env->alpha_hover = 0.071445f;
     env->alpha_shaping = 3.9754f;
     env->alpha_omega = 0.00135588f;
+    env->race_oob_penalty = 1.0f;
+    env->race_difficulty = 0.0f;
+    env->race_min_spacing = 5.0f;
+    env->race_max_spacing = 12.0f;
+    env->race_min_turn_angle = 0.15f;
+    env->race_max_turn_angle = 3.14159f;
+    env->race_min_height_delta = 0.25f;
+    env->race_max_height_delta = 8.0f;
     env->hover_target_dist = 5.0f;
     env->hover_dist = 0.1f;
     env->hover_omega = 0.1f;

@@ -429,7 +429,7 @@ void c_render(DroneEnv* env) {
         env->task = (DroneTask)((env->task + 1) % TASK_N);
 
         if (env->task == RACE) {
-            reset_rings(&env->rng, env->ring_buffer, env->max_rings);
+            reset_rings(&env->rng, env->ring_buffer, env->max_rings, race_config(env));
         }
 
         for (int i = 0; i < env->num_agents; i++) {

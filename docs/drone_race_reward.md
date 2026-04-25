@@ -59,27 +59,18 @@ This means:
 - passing a ring gives a one-time jump of about `+1`
 - hovering in place gives about `0`
 
-On top of that base progress reward, the current env also applies two race
-stability terms:
+On top of that base progress reward, the current env also applies an explicit
+out-of-bounds penalty:
 
 ```text
 reward =
     progress_reward
-    - race_boundary_penalty * boundary_risk(pos_after, race_boundary_margin)
     - race_oob_penalty * 1[oob]
 ```
 
-Where:
+`race_oob_penalty` is only applied on the terminal step that exits bounds.
 
-- `boundary_risk` is `0` when the drone has enough clearance to all bounds
-- `boundary_risk` grows as the drone approaches the nearest world boundary
-- `race_oob_penalty` is only applied on the terminal step that exits bounds
-
-The default knobs live in `config/drone.ini`:
-
-- `race_oob_penalty`
-- `race_boundary_penalty`
-- `race_boundary_margin`
+The default `race_oob_penalty` knob lives in `config/drone.ini`.
 
 The drone observation now has `26` floats. The final three entries are signed
 normalized world position:
@@ -109,5 +100,5 @@ When the drone hits the ring rim instead of making a clean pass:
 Out of bounds should end the episode under standard terminal semantics.
 In practice, terminal semantics alone were not enough for stable transfer from
 hover, because the policy could still learn to grab some race progress and then
-crash. The explicit OOB penalty and boundary shaping are there to make
-"progress, then die" less attractive than bounded flight.
+crash. The explicit OOB penalty is there to make "progress, then die" less
+attractive than bounded flight.
