@@ -576,8 +576,33 @@ void c_render(DroneEnv* env) {
 
     // Rings if in race mode
     if (env->task == RACE) {
+        int current_ring = 0;
+        if (env->num_agents > 0 && client->selected_drone >= 0 && client->selected_drone < env->num_agents) {
+            current_ring = env->agents[client->selected_drone].buffer_idx;
+        }
+        int next_ring = env->max_rings > 0 ? (current_ring + 1) % env->max_rings : 0;
+
+        for (int i = 1; i < env->max_rings; i++) {
+            Vec3 p0 = env->ring_buffer[i - 1].pos;
+            Vec3 p1 = env->ring_buffer[i].pos;
+            DrawLine3D((Vector3){p0.x, p0.y, p0.z}, (Vector3){p1.x, p1.y, p1.z},
+                       ColorAlpha(PUFF_WHITE, 0.45f));
+        }
+
         for (int i = 0; i < env->max_rings; i++) {
-            DrawRing3D(env->ring_buffer[i], 0.2f, GREEN, BLUE);
+            float thickness = 0.14f;
+            Color entry = ColorAlpha(GREEN, 0.35f);
+            Color exit = ColorAlpha(BLUE, 0.35f);
+            if (i == current_ring) {
+                thickness = 0.36f;
+                entry = PUFF_GREEN;
+                exit = YELLOW;
+            } else if (i == next_ring) {
+                thickness = 0.26f;
+                entry = PUFF_CYAN;
+                exit = SKYBLUE;
+            }
+            DrawRing3D(env->ring_buffer[i], thickness, entry, exit);
         }
     }
 
