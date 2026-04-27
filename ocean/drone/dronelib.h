@@ -159,6 +159,7 @@ typedef struct {
     float ring_collisions;
     float hover_score;
     float prev_potential;
+    float prev_race_alignment;
     float hover_ema;
     float ema_dist;
     float ema_vel;
@@ -610,6 +611,26 @@ static inline int check_ring(Drone* drone, Target* ring) {
     }
 
     return 0;
+}
+
+static inline float race_aperture_alignment(Drone* drone, Target* ring) {
+    Vec3 offset = sub3(drone->state.pos, ring->pos);
+    float signed_plane = dot3(offset, ring->normal);
+    float entry_side_gate = signed_plane <= 0.0f ? 1.0f : 0.0f;
+    float near_plane_gate = clampf(1.0f - fabsf(signed_plane) / 8.0f, 0.0f, 1.0f);
+
+    Vec3 radial = sub3(offset, scalmul3(ring->normal, signed_plane));
+    float safe_radius = fmaxf(ring->radius - 0.5f, 1e-3f);
+    float centeredness = clampf(1.0f - norm3(radial) / safe_radius, 0.0f, 1.0f);
+
+    float speed = norm3(drone->state.vel);
+    float forward_direction = 0.0f;
+    if (speed > 1e-6f) {
+        Vec3 vel_dir = scalmul3(drone->state.vel, 1.0f / speed);
+        forward_direction = clampf(dot3(vel_dir, ring->normal), 0.0f, 1.0f);
+    }
+
+    return entry_side_gate * near_plane_gate * centeredness * forward_direction;
 }
 
 float hover_potential(Drone* agent, float hover_dist, float hover_omega, float hover_vel) {

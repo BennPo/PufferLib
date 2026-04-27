@@ -42,6 +42,8 @@ struct DroneEnv {
     float alpha_omega;
     float race_oob_penalty;
     float ring_collision_penalty;
+    float race_clean_pass_bonus;
+    float race_aperture_alignment_coef;
     float race_difficulty;
     float race_min_spacing;
     float race_max_spacing;
@@ -119,6 +121,7 @@ void reset_agent(DroneEnv* env, Drone* agent) {
     agent->rings_passed = 0;
     agent->ring_collisions = 0.0f;
     agent->prev_race_progress = 0.0f;
+    agent->prev_race_alignment = 0.0f;
     agent->score = 0.0f;
     agent->hover_score = 0.0f;
     agent->hover_ema = 0.0f;
@@ -156,6 +159,7 @@ void reset_agent(DroneEnv* env, Drone* agent) {
 void sync_agent_progress(DroneEnv* env, Drone* agent) {
     if (env->task == RACE) {
         agent->prev_race_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
+        agent->prev_race_alignment = race_aperture_alignment(agent, agent->target);
     }
 }
 
@@ -205,19 +209,29 @@ void c_step(DroneEnv* env) {
                || fabsf(agent->state.pos.y) > MARGIN_Y
                || fabsf(agent->state.pos.z) > MARGIN_Z;
 
-            int ring_state = check_ring(agent, agent->target);
+            Target* current_target = agent->target;
+            int ring_state = check_ring(agent, current_target);
+            float current_alignment = race_aperture_alignment(agent, current_target);
             if (ring_state == 1) {
                 agent->rings_passed += 1;
                 agent->buffer_idx = (agent->buffer_idx + 1) % agent->buffer_size;
                 set_target_race(agent);
+                reward += env->race_clean_pass_bonus;
             } else if (ring_state == -1) {
                 agent->ring_collisions += 1.0f;
                 ring_collision_reset = true;
             }
 
             float current_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
-            reward = current_progress - agent->prev_race_progress;
+            reward += current_progress - agent->prev_race_progress;
             agent->prev_race_progress = current_progress;
+
+            if (ring_state == 0 && !oob && !timeout) {
+                reward += env->race_aperture_alignment_coef * (current_alignment - agent->prev_race_alignment);
+                agent->prev_race_alignment = current_alignment;
+            } else if (ring_state == 1) {
+                agent->prev_race_alignment = race_aperture_alignment(agent, agent->target);
+            }
 
             if (oob) {
                 reward -= env->race_oob_penalty;

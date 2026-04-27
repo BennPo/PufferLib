@@ -42,6 +42,8 @@ int main() {
     env->alpha_omega = 0.00135588f;
     env->race_oob_penalty = 1.0f;
     env->ring_collision_penalty = 0.0f;
+    env->race_clean_pass_bonus = 0.5f;
+    env->race_aperture_alignment_coef = 0.1f;
     env->race_difficulty = 0.0f;
     env->race_min_spacing = 5.0f;
     env->race_max_spacing = 12.0f;

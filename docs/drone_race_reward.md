@@ -56,7 +56,7 @@ This means:
 - moving closer to the current ring gives positive reward
 - moving away gives negative reward
 - changes closer to the ring are weighted more heavily than changes far away
-- passing a ring gives a one-time jump of about `+1`
+- passing a ring gives a one-time progress jump plus `race_clean_pass_bonus`
 - hovering in place gives about `0`
 
 On top of that base progress reward, the current env also applies an explicit
@@ -65,16 +65,44 @@ out-of-bounds penalty:
 ```text
 reward =
     progress_reward
+    + race_clean_pass_bonus * 1[clean_pass]
+    + race_aperture_alignment_coef * alignment_delta
     - race_oob_penalty * 1[oob]
     - ring_collision_penalty * 1[ring_collision]
 ```
 
 `race_oob_penalty` is only applied on the terminal step that exits bounds.
 `ring_collision_penalty` is only applied on the terminal step that hits a ring
-rim. Its default is `0.0`, preserving the previous reward behavior.
+rim. `race_clean_pass_bonus` is added only when the drone cleanly passes through
+the active ring. `alignment_delta` is only applied on ordinary non-terminal
+approach steps, so clean passes and rim collisions are not shaped by the
+aperture term.
 
-The default `race_oob_penalty` and `ring_collision_penalty` knobs live in
-`config/drone.ini`.
+The aperture alignment value is:
+
+```text
+alignment =
+    entry_side_gate
+  * near_plane_gate
+  * centeredness
+  * forward_direction
+```
+
+Where:
+
+- `entry_side_gate = 1` on the entry side of the ring plane, otherwise `0`
+- `near_plane_gate` fades from `1` at the ring plane to `0` eight units away
+- `centeredness` is `1` at the ring centerline and `0` at the safe aperture rim
+- `forward_direction` is the positive component of velocity along the ring normal
+
+The reward uses the change in this value, not the raw value, so the policy is
+rewarded for improving its approach instead of sitting aligned in front of a
+ring.
+
+The default `race_oob_penalty`, `ring_collision_penalty`,
+`race_clean_pass_bonus`, and `race_aperture_alignment_coef` knobs live in
+`config/drone.ini`. The recommended first experiment values are
+`race_clean_pass_bonus = 0.5` and `race_aperture_alignment_coef = 0.1`.
 
 The drone observation now has `26` floats. The final three entries are signed
 normalized world position:
