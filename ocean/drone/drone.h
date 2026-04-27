@@ -41,6 +41,7 @@ struct DroneEnv {
     float alpha_shaping;
     float alpha_omega;
     float race_oob_penalty;
+    float ring_collision_penalty;
     float race_difficulty;
     float race_min_spacing;
     float race_max_spacing;
@@ -220,6 +221,9 @@ void c_step(DroneEnv* env) {
 
             if (oob) {
                 reward -= env->race_oob_penalty;
+            }
+            if (ring_collision_reset) {
+                reward -= env->ring_collision_penalty;
             }
         } else {
             oob = norm3(sub3(agent->target->pos, agent->state.pos)) > (env->hover_target_dist + 1.0f);

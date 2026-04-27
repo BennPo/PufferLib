@@ -465,6 +465,18 @@ static inline Vec3 clamp_ring_pos(Vec3 pos, float clearance) {
     };
 }
 
+static inline bool ring_point_in_bounds(Vec3 pos, float clearance) {
+    return fabsf(pos.x) <= MARGIN_X - clearance
+        && fabsf(pos.y) <= MARGIN_Y - clearance
+        && fabsf(pos.z) <= MARGIN_Z - clearance;
+}
+
+static inline bool valid_race_ring_candidate(Vec3 pos, Vec3 dir, float ring_clearance, float exit_dist) {
+    Vec3 exit = add3(pos, scalmul3(dir, exit_dist));
+    return ring_point_in_bounds(pos, ring_clearance)
+        && ring_point_in_bounds(exit, RING_RADIUS);
+}
+
 static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_rings, RaceConfig config) {
 
     if (num_rings <= 0) return;
@@ -481,6 +493,7 @@ static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_r
     float min_abs_height_delta = hard_bias * height_delta * 0.55f;
 
     float clearance = 2.0f * RING_RADIUS;
+    float exit_dist = RING_RADIUS + 4.0f;
     float start_x = rndf(-MARGIN_X * 0.25f, MARGIN_X * 0.25f, rng);
     float start_y = rndf(-MARGIN_Y * 0.25f, MARGIN_Y * 0.25f, rng);
     float start_z = rndf(-height_delta, height_delta, rng);
@@ -495,7 +508,7 @@ static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_r
         Vec3 next = prev;
         Vec3 next_dir = dir;
 
-        bool in_bounds = false;
+        bool valid_candidate = false;
         for (int attempt = 0; attempt < 32; attempt++) {
             float base_yaw = atan2f(dir.y, dir.x);
             float turn_sign = rndf(0.0f, 1.0f, rng) < 0.5f ? -1.0f : 1.0f;
@@ -507,22 +520,61 @@ static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_r
             next_dir = direction_from_yaw_pitch(candidate_yaw, pitch);
             next = add3(prev, scalmul3(next_dir, spacing));
 
-            if (fabsf(next.x) <= MARGIN_X - clearance
-                    && fabsf(next.y) <= MARGIN_Y - clearance
-                    && fabsf(next.z) <= MARGIN_Z - clearance) {
-                in_bounds = true;
+            if (valid_race_ring_candidate(next, next_dir, clearance, exit_dist)) {
+                valid_candidate = true;
                 break;
             }
         }
 
-        if (!in_bounds) {
+        if (!valid_candidate) {
+            float base_yaw = atan2f(dir.y, dir.x);
             float center_yaw = atan2f(-prev.y, -prev.x);
-            float dz = clampf(-prev.z, -height_delta, height_delta);
-            float pitch = asinf(clampf(dz / spacing, -0.75f, 0.75f));
-            next_dir = direction_from_yaw_pitch(
-                center_yaw + rndf(-0.5f * turn_angle, 0.5f * turn_angle, rng),
-                pitch);
-            next = clamp_ring_pos(add3(prev, scalmul3(next_dir, spacing)), clearance);
+            float shortest_turn = atan2f(sinf(center_yaw - base_yaw), cosf(center_yaw - base_yaw));
+            float inward_sign = shortest_turn < 0.0f ? -1.0f : 1.0f;
+
+            for (int attempt = 0; attempt < 48; attempt++) {
+                float spacing_scale = 1.0f - 0.35f * ((float)attempt / 47.0f);
+                float candidate_spacing = fmaxf(min_spacing, spacing * spacing_scale);
+                float abs_turn = rndf(min_abs_turn, turn_angle, rng);
+                float random_sign = rndf(0.0f, 1.0f, rng) < 0.25f ? -inward_sign : inward_sign;
+                float candidate_yaw = base_yaw + random_sign * abs_turn;
+                float dz = clampf(-prev.z, -height_delta, height_delta);
+                dz += rndf(-0.25f * height_delta, 0.25f * height_delta, rng);
+                dz = clampf(dz, -height_delta, height_delta);
+                float pitch = asinf(clampf(dz / candidate_spacing, -0.75f, 0.75f));
+
+                next_dir = direction_from_yaw_pitch(candidate_yaw, pitch);
+                next = add3(prev, scalmul3(next_dir, candidate_spacing));
+
+                if (valid_race_ring_candidate(next, next_dir, clearance, exit_dist)) {
+                    valid_candidate = true;
+                    break;
+                }
+            }
+        }
+
+        if (!valid_candidate) {
+            float center_yaw = atan2f(-prev.y, -prev.x);
+
+            for (int attempt = 0; attempt < 16; attempt++) {
+                float spacing_scale = 1.0f - 0.5f * ((float)attempt / 15.0f);
+                float candidate_spacing = fmaxf(min_spacing, spacing * spacing_scale);
+                float dz = clampf(-prev.z, -height_delta, height_delta);
+                float pitch = asinf(clampf(dz / candidate_spacing, -0.75f, 0.75f));
+
+                next_dir = direction_from_yaw_pitch(center_yaw, pitch);
+                next = add3(prev, scalmul3(next_dir, candidate_spacing));
+
+                if (valid_race_ring_candidate(next, next_dir, clearance, exit_dist)) {
+                    valid_candidate = true;
+                    break;
+                }
+            }
+        }
+
+        if (!valid_candidate) {
+            next_dir = normalize3(sub3((Vec3){0.0f, 0.0f, 0.0f}, prev));
+            next = add3(prev, scalmul3(next_dir, fmaxf(min_spacing, spacing * 0.5f)));
         }
 
         Vec3 actual_dir = normalize3(sub3(next, prev));

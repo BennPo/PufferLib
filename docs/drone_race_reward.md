@@ -66,11 +66,15 @@ out-of-bounds penalty:
 reward =
     progress_reward
     - race_oob_penalty * 1[oob]
+    - ring_collision_penalty * 1[ring_collision]
 ```
 
 `race_oob_penalty` is only applied on the terminal step that exits bounds.
+`ring_collision_penalty` is only applied on the terminal step that hits a ring
+rim. Its default is `0.0`, preserving the previous reward behavior.
 
-The default `race_oob_penalty` knob lives in `config/drone.ini`.
+The default `race_oob_penalty` and `ring_collision_penalty` knobs live in
+`config/drone.ini`.
 
 The drone observation now has `26` floats. The final three entries are signed
 normalized world position:

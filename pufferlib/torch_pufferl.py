@@ -571,12 +571,20 @@ def _load_native_checkpoint(policy, path, device):
     policy.load_state_dict(state_dict, strict=True)
 
 def _load_policy_checkpoint(policy, path, device):
+    expected = _native_checkpoint_num_floats(policy)
+    if expected is not None and os.path.getsize(path) == expected * np.dtype(np.float32).itemsize:
+        try:
+            _load_native_checkpoint(policy, path, device)
+            return
+        except RuntimeError:
+            pass
+
     try:
         state_dict = torch.load(path, map_location=device)
         state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
         policy.load_state_dict(state_dict)
         return
-    except (pickle.UnpicklingError, RuntimeError, EOFError, AttributeError, ValueError, TypeError):
+    except (pickle.UnpicklingError, RuntimeError, EOFError, AttributeError, ValueError, TypeError, IndexError):
         pass
 
     _load_native_checkpoint(policy, path, device)

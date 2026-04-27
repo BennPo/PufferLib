@@ -18,6 +18,7 @@ void my_init(Env* env, Dict* kwargs) {
     env->alpha_shaping = dict_get(kwargs, "alpha_shaping")->value;
     env->alpha_omega = dict_get(kwargs, "alpha_omega")->value;
     env->race_oob_penalty = dict_get(kwargs, "race_oob_penalty")->value;
+    env->ring_collision_penalty = dict_get(kwargs, "ring_collision_penalty")->value;
     env->race_difficulty = dict_get(kwargs, "race_difficulty")->value;
     env->race_min_spacing = dict_get(kwargs, "race_min_spacing")->value;
     env->race_max_spacing = dict_get(kwargs, "race_max_spacing")->value;
