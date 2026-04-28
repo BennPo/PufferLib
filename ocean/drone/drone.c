@@ -44,6 +44,7 @@ int main() {
     env->ring_collision_penalty = 0.0f;
     env->race_clean_pass_bonus = 0.5f;
     env->race_aperture_alignment_coef = 0.1f;
+    env->race_corner_speed_control_coef = 0.0f;
     env->race_difficulty = 0.0f;
     env->race_min_spacing = 5.0f;
     env->race_max_spacing = 12.0f;

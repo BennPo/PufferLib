@@ -21,6 +21,7 @@ void my_init(Env* env, Dict* kwargs) {
     env->ring_collision_penalty = dict_get(kwargs, "ring_collision_penalty")->value;
     env->race_clean_pass_bonus = dict_get(kwargs, "race_clean_pass_bonus")->value;
     env->race_aperture_alignment_coef = dict_get(kwargs, "race_aperture_alignment_coef")->value;
+    env->race_corner_speed_control_coef = dict_get(kwargs, "race_corner_speed_control_coef")->value;
     env->race_difficulty = dict_get(kwargs, "race_difficulty")->value;
     env->race_min_spacing = dict_get(kwargs, "race_min_spacing")->value;
     env->race_max_spacing = dict_get(kwargs, "race_max_spacing")->value;
@@ -48,4 +49,6 @@ void my_log(Log* log, Dict* out) {
     dict_set(out, "ema_dist", log->ema_dist);
     dict_set(out, "ema_vel", log->ema_vel);
     dict_set(out, "ema_omega", log->ema_omega);
+    dict_set(out, "race_corner_speed_penalty", log->race_corner_speed_penalty);
+    dict_set(out, "race_speed", log->race_speed);
 }

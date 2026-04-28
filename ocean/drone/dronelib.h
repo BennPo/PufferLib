@@ -67,6 +67,8 @@ struct Log {
     float ema_dist;
     float ema_vel;
     float ema_omega;
+    float race_corner_speed_penalty;
+    float race_speed;
     float n;
 };
 
@@ -164,6 +166,8 @@ typedef struct {
     float ema_dist;
     float ema_vel;
     float ema_omega;
+    float race_corner_speed_penalty;
+    float race_speed;
 } Drone;
 
 static inline float clampf(float v, float min, float max) {
@@ -799,6 +803,39 @@ static inline Target* next_race_target(Drone* agent) {
 
     int next_idx = (agent->buffer_idx + 1) % agent->buffer_size;
     return &agent->buffer[next_idx];
+}
+
+static inline float compute_race_corner_speed_penalty(Drone* agent, Target* ring, float coef) {
+    if (coef <= 0.0f || agent->buffer == NULL || agent->buffer_size <= 1) {
+        return 0.0f;
+    }
+
+    Target* next = next_race_target(agent);
+    Vec3 next_dir = normalize3(sub3(next->pos, ring->pos));
+    float dot = clampf(dot3(ring->normal, next_dir), -1.0f, 1.0f);
+    float raw_turn = 0.5f * (1.0f - dot);
+    float turn_severity = clampf((raw_turn - 0.15f) / 0.85f, 0.0f, 1.0f);
+    if (turn_severity <= 0.0f) {
+        return 0.0f;
+    }
+
+    float signed_plane = dot3(sub3(agent->state.pos, ring->pos), ring->normal);
+    if (signed_plane > 0.0f) {
+        return 0.0f;
+    }
+
+    float near_ring_gate = clampf(1.0f + signed_plane / 8.0f, 0.0f, 1.0f);
+    if (near_ring_gate <= 0.0f) {
+        return 0.0f;
+    }
+
+    const float straight_speed = 12.0f;
+    const float corner_speed = 4.0f;
+    float desired_speed = lerpf(straight_speed, corner_speed, turn_severity);
+    float speed = norm3(agent->state.vel);
+    float excess = fmaxf(0.0f, speed - desired_speed);
+    float normalized_excess = excess / fmaxf(agent->params.max_vel, 1e-6f);
+    return coef * near_ring_gate * turn_severity * normalized_excess * normalized_excess;
 }
 
 static inline float race_target_max_dist(void) {

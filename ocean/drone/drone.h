@@ -44,6 +44,7 @@ struct DroneEnv {
     float ring_collision_penalty;
     float race_clean_pass_bonus;
     float race_aperture_alignment_coef;
+    float race_corner_speed_control_coef;
     float race_difficulty;
     float race_min_spacing;
     float race_max_spacing;
@@ -97,6 +98,10 @@ void add_log(DroneEnv* env, int idx, bool oob, bool timeout) {
     env->log.ema_dist += agent->ema_dist;
     env->log.ema_vel += agent->ema_vel;
     env->log.ema_omega += agent->ema_omega;
+    env->log.race_corner_speed_penalty += agent->race_corner_speed_penalty;
+    if (agent->episode_length > 0) {
+        env->log.race_speed += agent->race_speed / (float)agent->episode_length;
+    }
 
     env->log.n += 1.0f;
 
@@ -106,6 +111,8 @@ void add_log(DroneEnv* env, int idx, bool oob, bool timeout) {
     agent->score = 0.0f;
     agent->rings_passed = 0.0f;
     agent->ring_collisions = 0.0f;
+    agent->race_corner_speed_penalty = 0.0f;
+    agent->race_speed = 0.0f;
 }
 
 void compute_observations(DroneEnv* env) {
@@ -128,6 +135,8 @@ void reset_agent(DroneEnv* env, Drone* agent) {
     agent->ema_dist = 0.0f;
     agent->ema_vel = 0.0f;
     agent->ema_omega = 0.0f;
+    agent->race_corner_speed_penalty = 0.0f;
+    agent->race_speed = 0.0f;
 
     agent->buffer = env->ring_buffer;
     agent->buffer_size = env->max_rings;
@@ -212,6 +221,9 @@ void c_step(DroneEnv* env) {
             Target* current_target = agent->target;
             int ring_state = check_ring(agent, current_target);
             float current_alignment = race_aperture_alignment(agent, current_target);
+            float current_speed = norm3(agent->state.vel);
+            agent->race_speed += current_speed;
+
             if (ring_state == 1) {
                 agent->rings_passed += 1;
                 agent->buffer_idx = (agent->buffer_idx + 1) % agent->buffer_size;
@@ -229,6 +241,10 @@ void c_step(DroneEnv* env) {
             if (ring_state == 0 && !oob && !timeout) {
                 reward += env->race_aperture_alignment_coef * (current_alignment - agent->prev_race_alignment);
                 agent->prev_race_alignment = current_alignment;
+                float speed_penalty = compute_race_corner_speed_penalty(
+                    agent, current_target, env->race_corner_speed_control_coef);
+                reward -= speed_penalty;
+                agent->race_corner_speed_penalty += speed_penalty;
             } else if (ring_state == 1) {
                 agent->prev_race_alignment = race_aperture_alignment(agent, agent->target);
             }
