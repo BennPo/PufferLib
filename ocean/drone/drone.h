@@ -45,6 +45,7 @@ struct DroneEnv {
     float race_clean_pass_bonus;
     float race_aperture_alignment_coef;
     float race_corner_speed_control_coef;
+    float race_corner_speed_gate_dist;
     float race_difficulty;
     float race_min_spacing;
     float race_max_spacing;
@@ -242,7 +243,8 @@ void c_step(DroneEnv* env) {
                 reward += env->race_aperture_alignment_coef * (current_alignment - agent->prev_race_alignment);
                 agent->prev_race_alignment = current_alignment;
                 float speed_penalty = compute_race_corner_speed_penalty(
-                    agent, current_target, env->race_corner_speed_control_coef);
+                    agent, current_target, env->race_corner_speed_control_coef,
+                    env->race_corner_speed_gate_dist);
                 reward -= speed_penalty;
                 agent->race_corner_speed_penalty += speed_penalty;
             } else if (ring_state == 1) {

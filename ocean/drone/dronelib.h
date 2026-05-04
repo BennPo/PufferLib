@@ -805,8 +805,8 @@ static inline Target* next_race_target(Drone* agent) {
     return &agent->buffer[next_idx];
 }
 
-static inline float compute_race_corner_speed_penalty(Drone* agent, Target* ring, float coef) {
-    if (coef <= 0.0f || agent->buffer == NULL || agent->buffer_size <= 1) {
+static inline float compute_race_corner_speed_penalty(Drone* agent, Target* ring, float coef, float gate_dist) {
+    if (coef <= 0.0f || gate_dist <= 0.0f || agent->buffer == NULL || agent->buffer_size <= 1) {
         return 0.0f;
     }
 
@@ -824,7 +824,7 @@ static inline float compute_race_corner_speed_penalty(Drone* agent, Target* ring
         return 0.0f;
     }
 
-    float near_ring_gate = clampf(1.0f + signed_plane / 8.0f, 0.0f, 1.0f);
+    float near_ring_gate = clampf(1.0f + signed_plane / gate_dist, 0.0f, 1.0f);
     if (near_ring_gate <= 0.0f) {
         return 0.0f;
     }
