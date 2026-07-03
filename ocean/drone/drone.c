@@ -46,13 +46,9 @@ int main() {
     env->race_aperture_alignment_coef = 0.1f;
     env->race_corner_speed_control_coef = 0.0f;
     env->race_corner_speed_gate_dist = 8.0f;
-    env->race_difficulty = 0.0f;
-    env->race_min_spacing = 5.0f;
-    env->race_max_spacing = 12.0f;
-    env->race_min_turn_angle = 0.15f;
-    env->race_max_turn_angle = 3.14159f;
-    env->race_min_height_delta = 0.25f;
-    env->race_max_height_delta = 8.0f;
+    env->race_course_mode = RACE_COURSE_RANDOM;
+    env->race_min_spacing = 7.0f;
+    env->race_max_spacing = 16.0f;
     env->hover_target_dist = 5.0f;
     env->hover_dist = 0.1f;
     env->hover_omega = 0.1f;

@@ -46,13 +46,9 @@ struct DroneEnv {
     float race_aperture_alignment_coef;
     float race_corner_speed_control_coef;
     float race_corner_speed_gate_dist;
-    float race_difficulty;
+    int race_course_mode;
     float race_min_spacing;
     float race_max_spacing;
-    float race_min_turn_angle;
-    float race_max_turn_angle;
-    float race_min_height_delta;
-    float race_max_height_delta;
     // hover task parameters
     float hover_target_dist;
     float hover_dist;
@@ -175,13 +171,9 @@ void sync_agent_progress(DroneEnv* env, Drone* agent) {
 
 RaceConfig race_config(DroneEnv* env) {
     return (RaceConfig){
-        env->race_difficulty,
-        env->race_min_spacing,
-        env->race_max_spacing,
-        env->race_min_turn_angle,
-        env->race_max_turn_angle,
-        env->race_min_height_delta,
-        env->race_max_height_delta,
+        .course_mode = env->race_course_mode,
+        .min_spacing = env->race_min_spacing,
+        .max_spacing = env->race_max_spacing,
     };
 }
 
@@ -213,6 +205,7 @@ void c_step(DroneEnv* env) {
         bool oob = false;
         bool timeout = (agent->episode_length >= HORIZON);
         bool ring_collision_reset = false;
+        bool race_complete = false;
         float reward = 0.0f;
         if (env->task == RACE) {
             oob = fabsf(agent->state.pos.x) > MARGIN_X
@@ -227,15 +220,21 @@ void c_step(DroneEnv* env) {
 
             if (ring_state == 1) {
                 agent->rings_passed += 1;
-                agent->buffer_idx = (agent->buffer_idx + 1) % agent->buffer_size;
-                set_target_race(agent);
+                if (race_target_is_final(agent)) {
+                    race_complete = true;
+                } else {
+                    agent->buffer_idx += 1;
+                    set_target_race(agent);
+                }
                 reward += env->race_clean_pass_bonus;
             } else if (ring_state == -1) {
                 agent->ring_collisions += 1.0f;
                 ring_collision_reset = true;
             }
 
-            float current_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
+            float current_progress = race_complete
+                ? (float)agent->buffer_size
+                : race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
             reward += current_progress - agent->prev_race_progress;
             agent->prev_race_progress = current_progress;
 
@@ -247,7 +246,7 @@ void c_step(DroneEnv* env) {
                     env->race_corner_speed_gate_dist);
                 reward -= speed_penalty;
                 agent->race_corner_speed_penalty += speed_penalty;
-            } else if (ring_state == 1) {
+            } else if (ring_state == 1 && !race_complete) {
                 agent->prev_race_alignment = race_aperture_alignment(agent, agent->target);
             }
 
@@ -283,7 +282,7 @@ void c_step(DroneEnv* env) {
         agent->episode_return += reward;
         env->rewards[i] = reward;
 
-        bool reset = oob || timeout || ring_collision_reset;
+        bool reset = oob || timeout || ring_collision_reset || race_complete;
         env->terminals[i] = reset ? 1.0f : 0.0f;
 
         if (reset) {

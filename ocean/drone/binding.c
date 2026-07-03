@@ -23,13 +23,9 @@ void my_init(Env* env, Dict* kwargs) {
     env->race_aperture_alignment_coef = dict_get(kwargs, "race_aperture_alignment_coef")->value;
     env->race_corner_speed_control_coef = dict_get(kwargs, "race_corner_speed_control_coef")->value;
     env->race_corner_speed_gate_dist = dict_get(kwargs, "race_corner_speed_gate_dist")->value;
-    env->race_difficulty = dict_get(kwargs, "race_difficulty")->value;
+    env->race_course_mode = (int)dict_get(kwargs, "race_course_mode")->value;
     env->race_min_spacing = dict_get(kwargs, "race_min_spacing")->value;
     env->race_max_spacing = dict_get(kwargs, "race_max_spacing")->value;
-    env->race_min_turn_angle = dict_get(kwargs, "race_min_turn_angle")->value;
-    env->race_max_turn_angle = dict_get(kwargs, "race_max_turn_angle")->value;
-    env->race_min_height_delta = dict_get(kwargs, "race_min_height_delta")->value;
-    env->race_max_height_delta = dict_get(kwargs, "race_max_height_delta")->value;
     env->hover_target_dist = dict_get(kwargs, "hover_target_dist")->value;
     env->hover_dist = dict_get(kwargs, "hover_dist")->value;
     env->hover_omega = dict_get(kwargs, "hover_omega")->value;

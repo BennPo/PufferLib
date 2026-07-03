@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -89,14 +88,21 @@ typedef struct {
 } Target;
 
 typedef struct {
-    float difficulty;
+    int course_mode;
     float min_spacing;
     float max_spacing;
-    float min_turn_angle;
-    float max_turn_angle;
+} RaceConfig;
+
+typedef struct {
+    float max_turn_radians;
     float min_height_delta;
     float max_height_delta;
-} RaceConfig;
+} RaceCoursePreset;
+
+enum {
+    RACE_COURSE_STRAIGHT = 1,
+    RACE_COURSE_RANDOM = 2,
+};
 
 typedef struct {
     Vec3 pos[TRAIL_LENGTH];
@@ -462,50 +468,10 @@ static inline Vec3 direction_from_yaw_pitch(float yaw, float pitch) {
     return normalize3((Vec3){cp * cosf(yaw), cp * sinf(yaw), sinf(pitch)});
 }
 
-static inline Vec3 clamp_ring_pos(Vec3 pos, float clearance) {
-    return (Vec3){
-        clampf(pos.x, -MARGIN_X + clearance, MARGIN_X - clearance),
-        clampf(pos.y, -MARGIN_Y + clearance, MARGIN_Y - clearance),
-        clampf(pos.z, -MARGIN_Z + clearance, MARGIN_Z - clearance),
-    };
-}
-
 static inline bool ring_point_in_bounds(Vec3 pos, float clearance) {
     return fabsf(pos.x) <= MARGIN_X - clearance
         && fabsf(pos.y) <= MARGIN_Y - clearance
         && fabsf(pos.z) <= MARGIN_Z - clearance;
-}
-
-static inline bool valid_race_ring_candidate(Vec3 pos, Vec3 dir, float ring_clearance, float exit_dist) {
-    Vec3 exit = add3(pos, scalmul3(dir, exit_dist));
-    return ring_point_in_bounds(pos, ring_clearance + 0.05f)
-        && ring_point_in_bounds(exit, RING_RADIUS + 0.05f);
-}
-
-static inline float ring_edge_ratio(Vec3 pos, float clearance) {
-    float x_limit = fmaxf(MARGIN_X - clearance, 1e-6f);
-    float y_limit = fmaxf(MARGIN_Y - clearance, 1e-6f);
-    float z_limit = fmaxf(MARGIN_Z - clearance, 1e-6f);
-    float x_ratio = (x_limit - fabsf(pos.x)) / x_limit;
-    float y_ratio = (y_limit - fabsf(pos.y)) / y_limit;
-    float z_ratio = (z_limit - fabsf(pos.z)) / z_limit;
-    return fminf(x_ratio, fminf(y_ratio, z_ratio));
-}
-
-static inline float race_ramp(float value, float start, float end) {
-    return clampf((value - start) / fmaxf(end - start, 1e-6f), 0.0f, 1.0f);
-}
-
-static inline Vec3 race_loop_anchor(int idx) {
-    const float x = MARGIN_X - 2.0f * RING_RADIUS - 2.0f;
-    const float y = MARGIN_Y - 2.0f * RING_RADIUS - 2.0f;
-    const Vec3 anchors[4] = {
-        { x, -y, 0.0f},
-        { x,  y, 0.0f},
-        {-x,  y, 0.0f},
-        {-x, -y, 0.0f},
-    };
-    return anchors[idx % 4];
 }
 
 static inline void make_straight_race(Target* ring_buffer, int num_rings, float min_spacing) {
@@ -528,198 +494,266 @@ static inline void make_straight_race(Target* ring_buffer, int num_rings, float 
     }
 }
 
-static inline float race_ring_candidate_score(
-        Vec3 pos, Vec3 dir, float candidate_spacing, float target_spacing,
-        float abs_turn, float turn_angle, float abs_dz, float height_delta,
-        float turn_sign, float curve_sign, float difficulty, Vec3 prev_dir,
-        Vec3 anchor, float loop_bias, float span_bias, float smooth_bias,
-        float ring_clearance, float exit_dist) {
-    if (!valid_race_ring_candidate(pos, dir, ring_clearance, exit_dist)) {
-        return -FLT_MAX;
-    }
-
-    Vec3 exit = add3(pos, scalmul3(dir, exit_dist));
-    Vec3 lookahead = add3(pos, scalmul3(dir, candidate_spacing + exit_dist));
-    Vec3 far_lookahead = add3(pos, scalmul3(dir, 2.0f * candidate_spacing + exit_dist));
-    float edge_ratio = fminf(
-        ring_edge_ratio(pos, ring_clearance),
-        ring_edge_ratio(exit, RING_RADIUS));
-    edge_ratio = fminf(edge_ratio, ring_edge_ratio(lookahead, RING_RADIUS));
-    edge_ratio = fminf(edge_ratio, ring_edge_ratio(far_lookahead, RING_RADIUS));
-    edge_ratio = clampf(edge_ratio, 0.0f, 1.0f);
-
-    float spacing_ratio = candidate_spacing / fmaxf(target_spacing, 1e-6f);
-    float spacing_error = fabsf(1.0f - spacing_ratio);
-    float turn_interest = abs_turn / fmaxf(turn_angle, 1e-6f);
-    float height_interest = abs_dz / fmaxf(height_delta, 1e-6f);
-    float same_curve = turn_sign == curve_sign ? 1.0f : 0.0f;
-    float smoothness = 0.5f + 0.5f * clampf(dot3(prev_dir, dir), -1.0f, 1.0f);
-    float loop_closeness = 0.0f;
-    if (loop_bias > 0.0f) {
-        float anchor_dist = norm3(sub3(pos, anchor));
-        loop_closeness = 1.0f - clampf(anchor_dist / (2.0f * MARGIN_X), 0.0f, 1.0f);
-    }
-    float span_score = clampf(norm3(pos) / sqrtf(MARGIN_X * MARGIN_X + MARGIN_Y * MARGIN_Y), 0.0f, 1.0f);
-
-    return 22.0f * edge_ratio * edge_ratio
-        - 3.0f * spacing_error * spacing_error
-        + smooth_bias * 4.0f * smoothness
-        + (0.05f + 1.85f * difficulty) * difficulty * turn_interest
-        + difficulty * difficulty * (0.8f * height_interest + 0.4f * same_curve)
-        + loop_bias * 12.0f * loop_closeness
-        + span_bias * 5.0f * span_score;
+static inline float race_config_min_spacing(RaceConfig config) {
+    return fmaxf(2.0f * RING_RADIUS + 1.0f, config.min_spacing);
 }
 
-static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_rings, RaceConfig config) {
+static inline float race_config_max_spacing(RaceConfig config) {
+    float min_spacing = race_config_min_spacing(config);
+    return fmaxf(min_spacing, config.max_spacing);
+}
 
+static inline float race_ring_clearance(void) {
+    return 2.0f * RING_RADIUS;
+}
+
+static inline float race_planar_turn_angle(Vec3 incoming, Vec3 outgoing) {
+    float incoming_xy = sqrtf(incoming.x * incoming.x + incoming.y * incoming.y);
+    float outgoing_xy = sqrtf(outgoing.x * outgoing.x + outgoing.y * outgoing.y);
+    if (incoming_xy <= 1e-5f || outgoing_xy <= 1e-5f) {
+        return 0.0f;
+    }
+
+    float denom = incoming_xy * outgoing_xy;
+    float turn_dot = clampf((incoming.x * outgoing.x + incoming.y * outgoing.y) / denom, -1.0f, 1.0f);
+    float turn_cross = clampf((incoming.x * outgoing.y - incoming.y * outgoing.x) / denom, -1.0f, 1.0f);
+    return fabsf(atan2f(turn_cross, turn_dot));
+}
+
+static inline RaceCoursePreset race_course_preset(int course_mode) {
+    switch (course_mode) {
+        case RACE_COURSE_RANDOM:
+            return (RaceCoursePreset){
+                .max_turn_radians = (float)M_PI * 0.5f - 1e-4f,
+                .min_height_delta = 0.25f,
+                .max_height_delta = 4.0f,
+            };
+        case RACE_COURSE_STRAIGHT:
+        default:
+            return (RaceCoursePreset){
+                .max_turn_radians = (float)M_PI / 10.0f,
+                .min_height_delta = 0.0f,
+                .max_height_delta = 0.5f,
+            };
+    }
+}
+
+static inline void assign_race_ring_normals_open(Target* ring_buffer, int num_rings) {
     if (num_rings <= 0) return;
-
-    float difficulty = clampf(config.difficulty, 0.0f, 1.0f);
-    float min_spacing = fmaxf(2.0f * RING_RADIUS + 1.0f, config.min_spacing);
-    float max_spacing = fmaxf(min_spacing, config.max_spacing);
-    if (difficulty <= 1e-6f) {
-        make_straight_race(ring_buffer, num_rings, min_spacing);
+    if (num_rings == 1) {
+        ring_buffer[0] = make_race_ring(ring_buffer[0].pos, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS);
         return;
     }
 
-    float turn_t = difficulty * difficulty * difficulty * difficulty;
-    float height_t = turn_t * race_ramp(difficulty, 0.10f, 1.0f);
-    float loop_t = race_ramp(difficulty, 0.65f, 1.0f);
-    loop_t = loop_t * loop_t;
-    float height_bias = race_ramp(difficulty, 0.35f, 0.75f);
-    float spacing_t = fmaxf(turn_t, loop_t);
+    for (int i = 0; i < num_rings; i++) {
+        Vec3 pos = ring_buffer[i].pos;
 
-    float spacing = lerpf(min_spacing, max_spacing, spacing_t);
-    float low_turn = fmaxf(0.02f, config.min_turn_angle * 0.25f);
-    float course_turn_angle = fmaxf(0.02f, lerpf(low_turn, config.max_turn_angle, turn_t));
-    float height_delta = fmaxf(0.0f, lerpf(0.0f, config.max_height_delta, height_t));
-    height_delta = fminf(height_delta, spacing * 0.75f);
-    float min_abs_turn = loop_t * course_turn_angle * 0.50f;
-
-    float clearance = 2.0f * RING_RADIUS;
-    float exit_dist = RING_RADIUS + 4.0f;
-
-    bool generated = false;
-    for (int course_attempt = 0; course_attempt < 48 && !generated; course_attempt++) {
-        float retry_t = (float)course_attempt / 47.0f;
-        float target_spacing = fmaxf(min_spacing, spacing * (1.0f - 0.20f * retry_t));
-        float local_height_delta = fminf(height_delta, target_spacing * 0.75f);
-        float min_abs_height_delta = fmaxf(
-            loop_t * local_height_delta * 0.35f,
-            height_bias * local_height_delta * 0.20f);
-
-        float start_x = rndf(-MARGIN_X * (0.10f + 0.25f * loop_t), MARGIN_X * 0.10f, rng);
-        float start_y = rndf(-MARGIN_Y * 0.20f, MARGIN_Y * 0.20f, rng);
-        if (difficulty < 0.35f) {
-            float min_x = -MARGIN_X + clearance + 0.1f;
-            float max_x = MARGIN_X - RING_RADIUS - 0.1f - exit_dist;
-            float course_length = target_spacing * (float)(num_rings - 1);
-            start_x = clampf(-0.5f * course_length, min_x, max_x - course_length);
-            start_y = rndf(-MARGIN_Y * 0.04f, MARGIN_Y * 0.04f, rng);
-        }
-        float start_z = rndf(-local_height_delta, local_height_delta, rng);
-        Vec3 pos = clamp_ring_pos((Vec3){start_x, start_y, start_z}, clearance);
-
-        float yaw = rndf(-0.05f, 0.05f, rng);
-        Vec3 dir = direction_from_yaw_pitch(yaw, 0.0f);
-        if (difficulty >= 0.35f) {
-            float best_start_score = -FLT_MAX;
-            for (int attempt = 0; attempt < 64; attempt++) {
-                float candidate_yaw = rndf(-(float)M_PI, (float)M_PI, rng);
-                Vec3 candidate_dir = direction_from_yaw_pitch(candidate_yaw, 0.0f);
-                Vec3 lookahead = add3(pos, scalmul3(candidate_dir, 2.0f * target_spacing + exit_dist));
-                Vec3 far_lookahead = add3(pos, scalmul3(candidate_dir, 3.0f * target_spacing + exit_dist));
-                float score = fminf(
-                    ring_edge_ratio(lookahead, RING_RADIUS),
-                    ring_edge_ratio(far_lookahead, RING_RADIUS));
-                score += rndf(0.0f, 0.02f, rng);
-                if (score > best_start_score) {
-                    best_start_score = score;
-                    yaw = candidate_yaw;
-                    dir = candidate_dir;
-                }
+        Vec3 normal;
+        if (i == 0) {
+            normal = normalize3(sub3(ring_buffer[1].pos, pos));
+        } else if (i == num_rings - 1) {
+            normal = normalize3(sub3(pos, ring_buffer[i - 1].pos));
+        } else {
+            Vec3 incoming = normalize3(sub3(pos, ring_buffer[i - 1].pos));
+            Vec3 outgoing = normalize3(sub3(ring_buffer[i + 1].pos, pos));
+            normal = add3(incoming, outgoing);
+            if (norm3(normal) <= 1e-5f) {
+                normal = outgoing;
             }
         }
-        float curve_sign = rndf(0.0f, 1.0f, rng) < 0.5f ? -1.0f : 1.0f;
-        bool course_valid = true;
+
+        ring_buffer[i] = make_race_ring(pos, normal, RING_RADIUS);
+    }
+}
+
+static inline bool race_course_is_valid_open(Target* ring_buffer, int num_rings, RaceConfig config, bool check_spacing) {
+    if (num_rings <= 0) return false;
+
+    float min_spacing = race_config_min_spacing(config);
+    float max_spacing = race_config_max_spacing(config);
+    RaceCoursePreset preset = race_course_preset(config.course_mode);
+    float max_height_delta = fmaxf(0.0f, preset.max_height_delta);
+    float min_visible_height = fminf(fmaxf(0.0f, preset.min_height_delta), max_height_delta);
+    float clearance = race_ring_clearance();
+    float max_observed_dz = 0.0f;
+
+    for (int i = 0; i < num_rings; i++) {
+        Target* ring = &ring_buffer[i];
+
+        if (!ring_point_in_bounds(ring->pos, clearance + 0.05f)) {
+            return false;
+        }
+
+        float normal_len = norm3(ring->normal);
+        if (fabsf(normal_len - 1.0f) > 1e-3f) {
+            return false;
+        }
+    }
+
+    if (num_rings == 1) {
+        return true;
+    }
+
+    for (int i = 0; i < num_rings - 1; i++) {
+        Target* ring = &ring_buffer[i];
+        Target* next = &ring_buffer[i + 1];
+        Vec3 delta = sub3(next->pos, ring->pos);
+        float dist = norm3(delta);
+        if (dist <= 1e-5f) {
+            return false;
+        }
+
+        if (check_spacing && (dist < min_spacing - 1e-3f || dist > max_spacing + 1e-3f)) {
+            return false;
+        }
+
+        float abs_dz = fabsf(delta.z);
+        max_observed_dz = fmaxf(max_observed_dz, abs_dz);
+        if (abs_dz > max_height_delta + 1e-3f) {
+            return false;
+        }
+        if (abs_dz > 0.75f * dist + 1e-3f) {
+            return false;
+        }
+
+        Vec3 outgoing = normalize3(delta);
+        if (i > 0) {
+            Vec3 incoming = normalize3(sub3(ring->pos, ring_buffer[i - 1].pos));
+            if (dot3(incoming, outgoing) <= 1e-4f) {
+                return false;
+            }
+            if (race_planar_turn_angle(incoming, outgoing) > preset.max_turn_radians + 1e-3f) {
+                return false;
+            }
+        }
+
+        if (dot3(delta, ring->normal) <= 1e-3f) {
+            return false;
+        }
+        if (dot3(scalmul3(delta, -1.0f), next->normal) >= -1e-3f) {
+            return false;
+        }
+        if (dot3(ring->normal, next->normal) <= 1e-4f) {
+            return false;
+        }
+    }
+
+    if (num_rings > 1 && min_visible_height > 1e-6f && max_height_delta > 1e-6f
+            && max_observed_dz < min_visible_height - 1e-3f) {
+        return false;
+    }
+
+    return true;
+}
+
+static inline bool make_preset_open_race(unsigned int* rng, Target* ring_buffer, int num_rings, RaceConfig config) {
+    if (num_rings <= 0) return false;
+
+    RaceCoursePreset preset = race_course_preset(config.course_mode);
+    float min_spacing = race_config_min_spacing(config);
+    float max_spacing = race_config_max_spacing(config);
+    float max_height_delta = fmaxf(0.0f, preset.max_height_delta);
+    float max_turn_radians = clampf(preset.max_turn_radians, 0.0f, (float)M_PI * 0.5f - 1e-4f);
+    float min_height_delta = fminf(fmaxf(0.0f, preset.min_height_delta), max_height_delta);
+    bool require_visible_height = min_height_delta > 1e-6f;
+    float clearance = race_ring_clearance();
+    float xy_limit = fminf(MARGIN_X - clearance - 0.1f, MARGIN_Y - clearance - 0.1f);
+    float z_limit = fmaxf(0.0f, MARGIN_Z - clearance - 0.1f);
+    float z_delta_limit = fminf(max_height_delta, z_limit * 1.25f);
+    if (xy_limit <= 1e-6f) return false;
+
+    if (num_rings == 1) {
+        ring_buffer[0] = make_race_ring((Vec3){0.0f, 0.0f, 0.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS);
+        return true;
+    }
+
+    for (int course_attempt = 0; course_attempt < 512; course_attempt++) {
+        float start_window = fminf(xy_limit * 0.35f, 0.5f * min_spacing * (float)num_rings);
+        Vec3 pos = {
+            rndf(-start_window, start_window, rng),
+            rndf(-start_window, start_window, rng),
+            rndf(-0.35f * z_limit, 0.35f * z_limit, rng),
+        };
+        float yaw = rndf(-(float)M_PI, (float)M_PI, rng);
+        Vec3 dir = direction_from_yaw_pitch(yaw, 0.0f);
         ring_buffer[0] = make_race_ring(pos, dir, RING_RADIUS);
 
+        bool course_valid = true;
+        bool forced_height = false;
         for (int i = 1; i < num_rings; i++) {
-            Vec3 prev = ring_buffer[i - 1].pos;
-            Vec3 best_next = prev;
-            float best_turn_sign = curve_sign;
-            float best_score = -FLT_MAX;
+            bool need_height = require_visible_height && !forced_height
+                && max_height_delta > 1e-6f && i >= num_rings / 2;
+            bool placed_ring = false;
 
-            int candidate_attempts = 128 + (int)(160.0f * difficulty);
-            int anchor_idx = ((i - 1) * 4) / (num_rings > 1 ? num_rings - 1 : 1);
-            Vec3 anchor = race_loop_anchor(anchor_idx);
-            for (int attempt = 0; attempt < candidate_attempts; attempt++) {
-                float base_yaw = atan2f(dir.y, dir.x);
-                float keep_curve_prob = difficulty < 0.35f ? 0.45f : 0.92f - 0.20f * loop_t;
-                float turn_sign = rndf(0.0f, 1.0f, rng) < keep_curve_prob
-                    ? curve_sign
-                    : (rndf(0.0f, 1.0f, rng) < 0.5f ? -1.0f : 1.0f);
-                float max_turn = fmaxf(min_abs_turn, course_turn_angle * rndf(0.25f, 1.0f, rng));
-                float abs_turn = rndf(min_abs_turn, max_turn, rng);
-                float candidate_yaw = base_yaw + turn_sign * abs_turn;
-                float height_sign = rndf(0.0f, 1.0f, rng) < 0.5f ? -1.0f : 1.0f;
-                float abs_dz = rndf(min_abs_height_delta, local_height_delta, rng);
-                float dz = height_sign * abs_dz;
-                float spacing_scale = rndf(0.92f, 1.03f, rng);
-                float candidate_spacing = fmaxf(min_spacing, target_spacing * spacing_scale);
-                float pitch = asinf(clampf(dz / candidate_spacing, -0.75f, 0.75f));
-                Vec3 next_dir = direction_from_yaw_pitch(candidate_yaw, pitch);
-                Vec3 next = add3(prev, scalmul3(next_dir, candidate_spacing));
-
-                float score = race_ring_candidate_score(
-                    next, next_dir, candidate_spacing, target_spacing,
-                    abs_turn, course_turn_angle, abs_dz, local_height_delta,
-                    turn_sign, curve_sign, difficulty, dir, anchor,
-                    loop_t, loop_t, 1.0f - race_ramp(difficulty, 0.35f, 0.75f),
-                    clearance, exit_dist);
-                if (score > best_score) {
-                    best_score = score;
-                    best_next = next;
-                    best_turn_sign = turn_sign;
+            for (int attempt = 0; attempt < 128; attempt++) {
+                float spacing = rndf(min_spacing, max_spacing, rng);
+                // Negative yaw turns left by convention; positive yaw turns right.
+                float turn = rndf(-max_turn_radians, max_turn_radians, rng);
+                float candidate_yaw = yaw + turn;
+                float local_max_dz = fminf(z_delta_limit, spacing * 0.60f);
+                float dz = 0.0f;
+                if (local_max_dz > 1e-6f) {
+                    float min_dz = need_height ? fminf(min_height_delta, local_max_dz) : 0.0f;
+                    float abs_dz = rndf(min_dz, local_max_dz, rng);
+                    float sign = rndf(0.0f, 1.0f, rng) < 0.5f ? -1.0f : 1.0f;
+                    dz = sign * abs_dz;
+                    if (pos.z + dz > z_limit) dz = -abs_dz;
+                    if (pos.z + dz < -z_limit) dz = abs_dz;
                 }
-            }
 
-            if (best_score <= -FLT_MAX * 0.5f) {
-                course_valid = false;
+                float pitch = asinf(clampf(dz / fmaxf(spacing, 1e-6f), -0.75f, 0.75f));
+                Vec3 candidate_dir = direction_from_yaw_pitch(candidate_yaw, pitch);
+                if (dot3(dir, candidate_dir) <= 1e-4f) {
+                    continue;
+                }
+
+                Vec3 next = add3(pos, scalmul3(candidate_dir, spacing));
+                if (!ring_point_in_bounds(next, clearance + 0.05f)) {
+                    continue;
+                }
+
+                float segment_dz = fabsf(next.z - pos.z);
+                if (require_visible_height && segment_dz >= min_height_delta - 1e-3f) {
+                    forced_height = true;
+                }
+                pos = next;
+                dir = candidate_dir;
+                yaw = candidate_yaw;
+                ring_buffer[i] = make_race_ring(pos, dir, RING_RADIUS);
+                placed_ring = true;
                 break;
             }
 
-            Vec3 actual_dir = normalize3(sub3(best_next, prev));
-            ring_buffer[i] = make_race_ring(best_next, actual_dir, RING_RADIUS);
-            dir = actual_dir;
-            curve_sign = best_turn_sign;
+            if (!placed_ring) {
+                course_valid = false;
+                break;
+            }
         }
 
-        generated = course_valid;
-    }
+        if (!course_valid) {
+            continue;
+        }
 
-    if (!generated) {
-        float fallback_spacing = min_spacing;
-        float fallback_turn = fminf(course_turn_angle, 0.55f);
-        float curve_sign = rndf(0.0f, 1.0f, rng) < 0.5f ? -1.0f : 1.0f;
-        float yaw = rndf(-(float)M_PI, (float)M_PI, rng);
-        Vec3 pos = (Vec3){0.0f, 0.0f, 0.0f};
-        Vec3 dir = direction_from_yaw_pitch(yaw, 0.0f);
-        ring_buffer[0] = make_race_ring(pos, dir, RING_RADIUS);
-
-        for (int i = 1; i < num_rings; i++) {
-            yaw += curve_sign * fallback_turn;
-            dir = direction_from_yaw_pitch(yaw, 0.0f);
-            Vec3 next = add3(pos, scalmul3(dir, fallback_spacing));
-            float fallback_height = height_delta * (0.25f + 0.50f * height_bias);
-            next.z = fallback_height * sinf((float)i * 1.2f);
-            next = clamp_ring_pos(next, clearance);
-            Vec3 actual_dir = normalize3(sub3(next, pos));
-            ring_buffer[i] = make_race_ring(next, actual_dir, RING_RADIUS);
-            pos = next;
-            dir = actual_dir;
+        assign_race_ring_normals_open(ring_buffer, num_rings);
+        if (race_course_is_valid_open(ring_buffer, num_rings, config, true)) {
+            return true;
         }
     }
+
+    return false;
+}
+
+static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_rings, RaceConfig config) {
+    if (num_rings <= 0) return;
+
+    float min_spacing = race_config_min_spacing(config);
+    if (!make_preset_open_race(rng, ring_buffer, num_rings, config)) {
+        make_straight_race(ring_buffer, num_rings, min_spacing);
+    }
+}
+
+static inline bool race_target_is_final(Drone* agent) {
+    return agent->buffer_size <= 1 || agent->buffer_idx >= agent->buffer_size - 1;
 }
 
 static inline int check_ring(Drone* drone, Target* ring) {
@@ -800,9 +834,11 @@ static inline Target* next_race_target(Drone* agent) {
     if (agent->buffer == NULL || agent->buffer_size <= 0) {
         return agent->target;
     }
+    if (race_target_is_final(agent)) {
+        return NULL;
+    }
 
-    int next_idx = (agent->buffer_idx + 1) % agent->buffer_size;
-    return &agent->buffer[next_idx];
+    return &agent->buffer[agent->buffer_idx + 1];
 }
 
 static inline float compute_race_corner_speed_penalty(Drone* agent, Target* ring, float coef, float gate_dist) {
@@ -811,6 +847,10 @@ static inline float compute_race_corner_speed_penalty(Drone* agent, Target* ring
     }
 
     Target* next = next_race_target(agent);
+    if (next == NULL) {
+        return 0.0f;
+    }
+
     Vec3 next_dir = normalize3(sub3(next->pos, ring->pos));
     float dot = clampf(dot3(ring->normal, next_dir), -1.0f, 1.0f);
     float raw_turn = 0.5f * (1.0f - dot);
@@ -876,8 +916,10 @@ void compute_drone_observations(Drone* agent, float* observations) {
     Vec3 to_next_target = (Vec3){0.0f, 0.0f, 0.0f};
     if (agent->buffer != NULL && agent->buffer_size > 1) {
         Target* next_target = next_race_target(agent);
-        Vec3 to_next_target_world = sub3(next_target->pos, agent->state.pos);
-        to_next_target = quat_rotate(q_inv, to_next_target_world);
+        if (next_target != NULL) {
+            Vec3 to_next_target_world = sub3(next_target->pos, agent->state.pos);
+            to_next_target = quat_rotate(q_inv, to_next_target_world);
+        }
     }
 
     // we should probably clamp the overall velocity
