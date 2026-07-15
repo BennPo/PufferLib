@@ -46,6 +46,8 @@ int main() {
     env->race_aperture_alignment_coef = 0.1f;
     env->race_corner_speed_control_coef = 0.0f;
     env->race_corner_speed_gate_dist = 8.0f;
+    env->race_lookahead_segment_coef = 0.05f;
+    env->race_lookahead_gate_dist = 8.0f;
     env->race_course_mode = RACE_COURSE_RANDOM;
     env->race_min_spacing = 7.0f;
     env->race_max_spacing = 16.0f;

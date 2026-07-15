@@ -67,6 +67,7 @@ struct Log {
     float ema_vel;
     float ema_omega;
     float race_corner_speed_penalty;
+    float race_lookahead_reward;
     float race_speed;
     float n;
 };
@@ -168,11 +169,13 @@ typedef struct {
     float hover_score;
     float prev_potential;
     float prev_race_alignment;
+    float prev_race_segment_progress;
     float hover_ema;
     float ema_dist;
     float ema_vel;
     float ema_omega;
     float race_corner_speed_penalty;
+    float race_lookahead_reward;
     float race_speed;
 } Drone;
 
@@ -803,6 +806,45 @@ static inline float race_aperture_alignment(Drone* drone, Target* ring) {
     }
 
     return entry_side_gate * near_plane_gate * centeredness * forward_direction;
+}
+
+static inline float race_lookahead_segment_progress(Vec3 pos, Target* current, Target* next) {
+    if (current == NULL || next == NULL) {
+        return 0.0f;
+    }
+
+    Vec3 segment = sub3(next->pos, current->pos);
+    float segment_len = norm3(segment);
+    if (segment_len <= 1e-6f) {
+        return 0.0f;
+    }
+
+    Vec3 segment_dir = scalmul3(segment, 1.0f / segment_len);
+    float progress = dot3(sub3(pos, current->pos), segment_dir) / segment_len;
+    return clampf(progress, 0.0f, 1.0f);
+}
+
+static inline float race_lookahead_gate_quality(Drone* drone, Target* ring, float gate_dist) {
+    if (drone == NULL || ring == NULL || gate_dist <= 0.0f) {
+        return 0.0f;
+    }
+
+    Vec3 offset = sub3(drone->state.pos, ring->pos);
+    float signed_plane = dot3(offset, ring->normal);
+    float near_plane_gate = clampf(1.0f - fabsf(signed_plane) / gate_dist, 0.0f, 1.0f);
+
+    Vec3 radial = sub3(offset, scalmul3(ring->normal, signed_plane));
+    float safe_radius = fmaxf(ring->radius - 0.5f, 1e-3f);
+    float centeredness = clampf(1.0f - norm3(radial) / safe_radius, 0.0f, 1.0f);
+
+    float speed = norm3(drone->state.vel);
+    float forward_through_current_ring = 0.0f;
+    if (speed > 1e-6f) {
+        Vec3 vel_dir = scalmul3(drone->state.vel, 1.0f / speed);
+        forward_through_current_ring = clampf(dot3(vel_dir, ring->normal), 0.0f, 1.0f);
+    }
+
+    return near_plane_gate * centeredness * forward_through_current_ring;
 }
 
 float hover_potential(Drone* agent, float hover_dist, float hover_omega, float hover_vel) {

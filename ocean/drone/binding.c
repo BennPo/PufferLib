@@ -23,6 +23,8 @@ void my_init(Env* env, Dict* kwargs) {
     env->race_aperture_alignment_coef = dict_get(kwargs, "race_aperture_alignment_coef")->value;
     env->race_corner_speed_control_coef = dict_get(kwargs, "race_corner_speed_control_coef")->value;
     env->race_corner_speed_gate_dist = dict_get(kwargs, "race_corner_speed_gate_dist")->value;
+    env->race_lookahead_segment_coef = dict_get(kwargs, "race_lookahead_segment_coef")->value;
+    env->race_lookahead_gate_dist = dict_get(kwargs, "race_lookahead_gate_dist")->value;
     env->race_course_mode = (int)dict_get(kwargs, "race_course_mode")->value;
     env->race_min_spacing = dict_get(kwargs, "race_min_spacing")->value;
     env->race_max_spacing = dict_get(kwargs, "race_max_spacing")->value;
@@ -47,5 +49,6 @@ void my_log(Log* log, Dict* out) {
     dict_set(out, "ema_vel", log->ema_vel);
     dict_set(out, "ema_omega", log->ema_omega);
     dict_set(out, "race_corner_speed_penalty", log->race_corner_speed_penalty);
+    dict_set(out, "race_lookahead_reward", log->race_lookahead_reward);
     dict_set(out, "race_speed", log->race_speed);
 }

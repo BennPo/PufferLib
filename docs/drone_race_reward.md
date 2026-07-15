@@ -67,6 +67,7 @@ reward =
     progress_reward
     + race_clean_pass_bonus * 1[clean_pass]
     + race_aperture_alignment_coef * alignment_delta
+    + race_lookahead_segment_coef * gate_quality * segment_progress_delta
     - race_oob_penalty * 1[oob]
     - ring_collision_penalty * 1[ring_collision]
 ```
@@ -77,6 +78,12 @@ rim. `race_clean_pass_bonus` is added only when the drone cleanly passes through
 the active ring. `alignment_delta` is only applied on ordinary non-terminal
 approach steps, so clean passes and rim collisions are not shaped by the
 aperture term.
+
+`segment_progress_delta` measures progress along the line from the current ring
+to the next ring. It is multiplied by `gate_quality`, so the lookahead term only
+matters when the drone is near the current ring aperture, centered, and moving
+through the current ring in the correct direction. This avoids rewarding raw
+distance to the next ring, which can encourage corner cutting.
 
 The aperture alignment value is:
 
@@ -100,9 +107,10 @@ rewarded for improving its approach instead of sitting aligned in front of a
 ring.
 
 The default `race_oob_penalty`, `ring_collision_penalty`,
-`race_clean_pass_bonus`, and `race_aperture_alignment_coef` knobs live in
-`config/drone.ini`. The recommended first experiment values are
-`race_clean_pass_bonus = 0.5` and `race_aperture_alignment_coef = 0.1`.
+`race_clean_pass_bonus`, `race_aperture_alignment_coef`, and lookahead knobs
+live in `config/drone.ini`. The recommended first experiment values are
+`race_clean_pass_bonus = 0.5`, `race_aperture_alignment_coef = 0.1`, and
+`race_lookahead_segment_coef = 0.05`.
 
 The drone observation now has `26` floats. The final three entries are signed
 normalized world position:

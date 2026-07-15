@@ -46,6 +46,8 @@ struct DroneEnv {
     float race_aperture_alignment_coef;
     float race_corner_speed_control_coef;
     float race_corner_speed_gate_dist;
+    float race_lookahead_segment_coef;
+    float race_lookahead_gate_dist;
     int race_course_mode;
     float race_min_spacing;
     float race_max_spacing;
@@ -96,6 +98,7 @@ void add_log(DroneEnv* env, int idx, bool oob, bool timeout) {
     env->log.ema_vel += agent->ema_vel;
     env->log.ema_omega += agent->ema_omega;
     env->log.race_corner_speed_penalty += agent->race_corner_speed_penalty;
+    env->log.race_lookahead_reward += agent->race_lookahead_reward;
     if (agent->episode_length > 0) {
         env->log.race_speed += agent->race_speed / (float)agent->episode_length;
     }
@@ -109,6 +112,7 @@ void add_log(DroneEnv* env, int idx, bool oob, bool timeout) {
     agent->rings_passed = 0.0f;
     agent->ring_collisions = 0.0f;
     agent->race_corner_speed_penalty = 0.0f;
+    agent->race_lookahead_reward = 0.0f;
     agent->race_speed = 0.0f;
 }
 
@@ -126,6 +130,7 @@ void reset_agent(DroneEnv* env, Drone* agent) {
     agent->ring_collisions = 0.0f;
     agent->prev_race_progress = 0.0f;
     agent->prev_race_alignment = 0.0f;
+    agent->prev_race_segment_progress = 0.0f;
     agent->score = 0.0f;
     agent->hover_score = 0.0f;
     agent->hover_ema = 0.0f;
@@ -133,6 +138,7 @@ void reset_agent(DroneEnv* env, Drone* agent) {
     agent->ema_vel = 0.0f;
     agent->ema_omega = 0.0f;
     agent->race_corner_speed_penalty = 0.0f;
+    agent->race_lookahead_reward = 0.0f;
     agent->race_speed = 0.0f;
 
     agent->buffer = env->ring_buffer;
@@ -164,8 +170,11 @@ void reset_agent(DroneEnv* env, Drone* agent) {
 
 void sync_agent_progress(DroneEnv* env, Drone* agent) {
     if (env->task == RACE) {
-        agent->prev_race_progress = race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
+        agent->prev_race_progress =
+            race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
         agent->prev_race_alignment = race_aperture_alignment(agent, agent->target);
+        agent->prev_race_segment_progress = race_lookahead_segment_progress(
+            agent->state.pos, agent->target, next_race_target(agent));
     }
 }
 
@@ -213,10 +222,29 @@ void c_step(DroneEnv* env) {
                || fabsf(agent->state.pos.z) > MARGIN_Z;
 
             Target* current_target = agent->target;
+            Target* next_target = next_race_target(agent);
             int ring_state = check_ring(agent, current_target);
             float current_alignment = race_aperture_alignment(agent, current_target);
+            float current_segment_progress = race_lookahead_segment_progress(
+                agent->state.pos, current_target, next_target);
+            float current_gate_quality = race_lookahead_gate_quality(
+                agent, current_target, env->race_lookahead_gate_dist);
             float current_speed = norm3(agent->state.vel);
             agent->race_speed += current_speed;
+
+            bool apply_lookahead = next_target != NULL
+                && env->race_lookahead_segment_coef > 0.0f
+                && !oob
+                && !timeout
+                && ring_state != -1;
+            if (apply_lookahead) {
+                float lookahead_reward = env->race_lookahead_segment_coef
+                    * current_gate_quality
+                    * (current_segment_progress - agent->prev_race_segment_progress);
+                reward += lookahead_reward;
+                agent->race_lookahead_reward += lookahead_reward;
+            }
+            agent->prev_race_segment_progress = current_segment_progress;
 
             if (ring_state == 1) {
                 agent->rings_passed += 1;
@@ -225,6 +253,8 @@ void c_step(DroneEnv* env) {
                 } else {
                     agent->buffer_idx += 1;
                     set_target_race(agent);
+                    agent->prev_race_segment_progress = race_lookahead_segment_progress(
+                        agent->state.pos, agent->target, next_race_target(agent));
                 }
                 reward += env->race_clean_pass_bonus;
             } else if (ring_state == -1) {

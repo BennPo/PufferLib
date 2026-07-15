@@ -4,6 +4,10 @@
 
 #include "../ocean/drone/dronelib.h"
 
+static void assert_near(float actual, float expected) {
+    assert(fabsf(actual - expected) < 1e-6f);
+}
+
 static void assert_clean_center_pass(Target* ring) {
     Drone drone = {0};
     drone.prev_pos = sub3(ring->pos, scalmul3(ring->normal, 1.0f));
@@ -65,6 +69,58 @@ static void assert_final_ring_is_finish(Target* rings, int num_rings) {
     }
 }
 
+static void assert_lookahead_helpers(void) {
+    // Use a simple straight course so the expected lookahead values are exact.
+    Target rings[3] = {
+        make_race_ring((Vec3){0.0f, 0.0f, 0.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS),
+        make_race_ring((Vec3){10.0f, 0.0f, 0.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS),
+        make_race_ring((Vec3){20.0f, 0.0f, 0.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS),
+    };
+    const float gate_dist = 8.0f;
+
+    Drone drone = {0};
+    drone.state.pos = (Vec3){0.1f, 0.0f, 0.0f};
+    drone.state.vel = (Vec3){5.0f, 0.0f, 0.0f};
+    assert(race_lookahead_gate_quality(&drone, &rings[0], gate_dist) > 0.9f);
+
+    drone.state.pos = (Vec3){0.1f, RING_RADIUS, 0.0f};
+    assert_near(race_lookahead_gate_quality(&drone, &rings[0], gate_dist), 0.0f);
+
+    drone.state.pos = (Vec3){9.0f, 0.0f, 0.0f};
+    assert_near(race_lookahead_gate_quality(&drone, &rings[0], gate_dist), 0.0f);
+
+    drone.state.pos = (Vec3){0.1f, 0.0f, 0.0f};
+    drone.state.vel = (Vec3){-5.0f, 0.0f, 0.0f};
+    assert_near(race_lookahead_gate_quality(&drone, &rings[0], gate_dist), 0.0f);
+
+    drone.state.vel = (Vec3){0.0f, 5.0f, 0.0f};
+    assert_near(race_lookahead_gate_quality(&drone, &rings[0], gate_dist), 0.0f);
+
+    float p_before = race_lookahead_segment_progress((Vec3){-1.0f, 0.0f, 0.0f}, &rings[0], &rings[1]);
+    float p_start = race_lookahead_segment_progress(rings[0].pos, &rings[0], &rings[1]);
+    float p_mid = race_lookahead_segment_progress((Vec3){5.0f, 0.0f, 0.0f}, &rings[0], &rings[1]);
+    float p_end = race_lookahead_segment_progress(rings[1].pos, &rings[0], &rings[1]);
+    float p_after = race_lookahead_segment_progress((Vec3){11.0f, 0.0f, 0.0f}, &rings[0], &rings[1]);
+    assert_near(p_before, 0.0f);
+    assert_near(p_start, 0.0f);
+    assert_near(p_mid, 0.5f);
+    assert_near(p_end, 1.0f);
+    assert_near(p_after, 1.0f);
+    assert_near(race_lookahead_segment_progress(rings[0].pos, &rings[0], NULL), 0.0f);
+    assert_near(race_lookahead_segment_progress(rings[0].pos, NULL, &rings[1]), 0.0f);
+
+    drone.state.pos = (Vec3){0.25f, 0.0f, 0.0f};
+    drone.state.vel = (Vec3){5.0f, 0.0f, 0.0f};
+    drone.prev_race_segment_progress = race_lookahead_segment_progress(drone.state.pos, &rings[0], &rings[1]);
+    drone.state.pos = (Vec3){0.5f, 0.0f, 0.0f};
+    float old_progress = race_lookahead_segment_progress(drone.state.pos, &rings[0], &rings[1]);
+    assert(old_progress - drone.prev_race_segment_progress > 0.0f);
+
+    drone.prev_race_segment_progress = race_lookahead_segment_progress(drone.state.pos, &rings[1], &rings[2]);
+    float reset_progress = race_lookahead_segment_progress(drone.state.pos, &rings[1], &rings[2]);
+    assert_near(reset_progress, drone.prev_race_segment_progress);
+}
+
 static void assert_generated_courses(RaceConfig config) {
     const int ring_counts[] = {5, 10, 16};
     for (int c = 0; c < 3; c++) {
@@ -96,6 +152,7 @@ int main(void) {
         .max_spacing = 16.0f,
     };
 
+    assert_lookahead_helpers();
     assert_generated_courses(straight_config);
     assert_generated_courses(random_config);
     assert_generated_courses(unknown_config);

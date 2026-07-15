@@ -20,6 +20,7 @@ SUMMARY_KEYS = [
     "env/ema_dist",
     "env/ema_vel",
     "env/ema_omega",
+    "env/race_lookahead_reward",
     "loss/approx_kl",
     "loss/explained_variance",
     "loss/entropy",
@@ -32,6 +33,7 @@ TREND_KEYS = [
     "env/timeout",
     "env/episode_return",
     "env/episode_length",
+    "env/race_lookahead_reward",
 ]
 
 
