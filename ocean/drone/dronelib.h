@@ -108,6 +108,7 @@ typedef struct {
 enum {
     RACE_COURSE_STRAIGHT = 1,
     RACE_COURSE_RANDOM = 2,
+    RACE_COURSE_EXTREME = 3,
 };
 
 typedef struct {
@@ -481,6 +482,13 @@ static inline Vec3 direction_from_yaw_pitch(float yaw, float pitch) {
     return normalize3((Vec3){cp * cosf(yaw), cp * sinf(yaw), sinf(pitch)});
 }
 
+static inline Vec3 random_unit_vector(unsigned int* rng) {
+    float z = rndf(-1.0f, 1.0f, rng);
+    float azimuth = rndf(-(float)M_PI, (float)M_PI, rng);
+    float radius_xy = sqrtf(fmaxf(0.0f, 1.0f - z * z));
+    return (Vec3){radius_xy * cosf(azimuth), radius_xy * sinf(azimuth), z};
+}
+
 static inline bool ring_point_in_bounds(Vec3 pos, float clearance) {
     return fabsf(pos.x) <= MARGIN_X - clearance
         && fabsf(pos.y) <= MARGIN_Y - clearance
@@ -604,6 +612,19 @@ static inline bool race_course_is_valid_open(Target* ring_buffer, int num_rings,
     }
 
     if (num_rings == 1) {
+        return true;
+    }
+
+    if (config.course_mode == RACE_COURSE_EXTREME) {
+        for (int i = 0; i < num_rings - 1; i++) {
+            float dist = norm3(sub3(ring_buffer[i + 1].pos, ring_buffer[i].pos));
+            if (dist <= 1e-5f) {
+                return false;
+            }
+            if (check_spacing && (dist < min_spacing - 1e-3f || dist > max_spacing + 1e-3f)) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -756,12 +777,86 @@ static inline bool make_preset_open_race(unsigned int* rng, Target* ring_buffer,
     return false;
 }
 
+static inline bool make_extreme_open_race(unsigned int* rng, Target* ring_buffer, int num_rings,
+                                          RaceConfig config) {
+    if (num_rings <= 0) return false;
+
+    float min_spacing = race_config_min_spacing(config);
+    float max_spacing = race_config_max_spacing(config);
+    float clearance = race_ring_clearance() + 0.05f;
+    float x_limit = MARGIN_X - clearance;
+    float y_limit = MARGIN_Y - clearance;
+    float z_limit = MARGIN_Z - clearance;
+    if (x_limit <= 0.0f || y_limit <= 0.0f || z_limit <= 0.0f) return false;
+
+    // Restart from a new first center when a partial random walk becomes trapped
+    // near an arena boundary.
+    for (int course_attempt = 0; course_attempt < 512; course_attempt++) {
+        Vec3 pos = {
+            rndf(-x_limit, x_limit, rng),
+            rndf(-y_limit, y_limit, rng),
+            rndf(-z_limit, z_limit, rng),
+        };
+        ring_buffer[0] = make_race_ring(pos, random_unit_vector(rng), RING_RADIUS);
+
+        bool course_valid = true;
+        for (int i = 1; i < num_rings; i++) {
+            bool placed_ring = false;
+            for (int placement_attempt = 0; placement_attempt < 256; placement_attempt++) {
+                Vec3 direction = random_unit_vector(rng);
+                float spacing = rndf(min_spacing, max_spacing, rng);
+                Vec3 candidate = add3(pos, scalmul3(direction, spacing));
+                if (!ring_point_in_bounds(candidate, clearance)) {
+                    continue;
+                }
+
+                pos = candidate;
+                ring_buffer[i] = make_race_ring(
+                    candidate, random_unit_vector(rng), RING_RADIUS);
+                placed_ring = true;
+                break;
+            }
+
+            if (!placed_ring) {
+                course_valid = false;
+                break;
+            }
+        }
+
+        if (course_valid && race_course_is_valid_open(ring_buffer, num_rings, config, true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static inline void reset_rings(unsigned int* rng, Target* ring_buffer, int num_rings, RaceConfig config) {
     if (num_rings <= 0) return;
 
     float min_spacing = race_config_min_spacing(config);
-    if (!make_preset_open_race(rng, ring_buffer, num_rings, config)) {
-        make_straight_race(ring_buffer, num_rings, min_spacing);
+    bool generated = config.course_mode == RACE_COURSE_EXTREME
+        ? make_extreme_open_race(rng, ring_buffer, num_rings, config)
+        : make_preset_open_race(rng, ring_buffer, num_rings, config);
+    if (!generated) {
+        if (config.course_mode == RACE_COURSE_EXTREME) {
+            // This should only be reached for pathological RNG/configuration
+            // combinations. Alternating between two safe centers preserves the
+            // requested adjacent spacing for courses of any length.
+            float clearance = race_ring_clearance() + 0.05f;
+            float half_spacing = 0.5f * min_spacing;
+            if (half_spacing > MARGIN_X - clearance) {
+                make_straight_race(ring_buffer, num_rings, min_spacing);
+                return;
+            }
+            for (int i = 0; i < num_rings; i++) {
+                float x = (i % 2 == 0) ? -half_spacing : half_spacing;
+                ring_buffer[i] = make_race_ring(
+                    (Vec3){x, 0.0f, 0.0f}, random_unit_vector(rng), RING_RADIUS);
+            }
+        } else {
+            make_straight_race(ring_buffer, num_rings, min_spacing);
+        }
     }
 }
 

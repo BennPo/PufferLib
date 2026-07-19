@@ -7,6 +7,12 @@ Rebuild the drone race course generator around open connected race modes. Mode
 random 3D path. Both modes guarantee that every ring can be flown through
 directly.
 
+Mode `3` is an opt-in extreme course. Each center is sampled 16-24 units from
+the previous center when launched with the recommended spacing overrides, and
+each ring normal is sampled independently over the sphere. Unlike modes `1`
+and `2`, mode `3` deliberately does not guarantee a direct fly-through from the
+previous ring; backward-facing and otherwise opposed gates are valid.
+
 The core rule is that gates may be randomly spaced and angled, but every ring
 must pass geometry checks that keep its normal aligned with the route. The drone
 should be able to fly from one ring to the next through the aperture, without
@@ -63,7 +69,7 @@ race_max_spacing = 16.0
 - On a clean final-ring pass, increment `rings_passed`, mark the episode
   terminal, log full course progress, and reset onto a fresh generated course.
 
-Required hard checks:
+Required hard checks for connected modes `1` and `2`:
 
 - Adjacent ring normals must be less than 90 degrees apart:
   `dot(previous.normal, next.normal) > 0`.
@@ -75,6 +81,10 @@ Required hard checks:
   current ring center must be on the next ring's entry side.
 - No spacing, normal, turn, height, or entry/exit check is performed from the
   final ring back to ring `0`.
+
+Mode `3` keeps only the bounds, configured adjacent-center spacing, and
+unit-normal checks from this list. Its turn, normal alignment, and entry/exit
+geometry are intentionally unrestricted.
 
 ## Test Plan
 

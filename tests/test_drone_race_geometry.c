@@ -20,11 +20,23 @@ static void assert_clean_center_pass(Target* ring) {
 static void assert_course(Target* rings, int num_rings, RaceConfig config) {
     assert(race_course_is_valid_open(rings, num_rings, config, true));
 
-    RaceCoursePreset preset = race_course_preset(config.course_mode);
-    float max_dz = 0.0f;
     for (int i = 0; i < num_rings; i++) {
         assert_clean_center_pass(&rings[i]);
     }
+
+    if (config.course_mode == RACE_COURSE_EXTREME) {
+        float min_spacing = race_config_min_spacing(config);
+        float max_spacing = race_config_max_spacing(config);
+        for (int i = 0; i < num_rings - 1; i++) {
+            float spacing = norm3(sub3(rings[i + 1].pos, rings[i].pos));
+            assert(spacing >= min_spacing - 1e-3f);
+            assert(spacing <= max_spacing + 1e-3f);
+        }
+        return;
+    }
+
+    RaceCoursePreset preset = race_course_preset(config.course_mode);
+    float max_dz = 0.0f;
 
     if (num_rings > 1) {
         Vec3 first_out = normalize3(sub3(rings[1].pos, rings[0].pos));
@@ -52,6 +64,53 @@ static void assert_course(Target* rings, int num_rings, RaceConfig config) {
     }
 
     assert(max_dz >= preset.min_height_delta - 1e-3f);
+}
+
+static void assert_extreme_distribution(RaceConfig config) {
+    bool saw_positive_dz = false;
+    bool saw_negative_dz = false;
+    bool saw_small_dz = false;
+    bool saw_large_dz = false;
+    bool saw_backward_ring = false;
+    bool saw_opposed_normals = false;
+
+    for (unsigned int seed = 1; seed <= 512; seed++) {
+        Target rings[10] = {0};
+        unsigned int rng = seed * 2654435761u;
+        reset_rings(&rng, rings, 10, config);
+        assert_course(rings, 10, config);
+
+        for (int i = 0; i < 9; i++) {
+            Vec3 segment = normalize3(sub3(rings[i + 1].pos, rings[i].pos));
+            float dz = rings[i + 1].pos.z - rings[i].pos.z;
+            saw_positive_dz |= dz > 1.0f;
+            saw_negative_dz |= dz < -1.0f;
+            saw_small_dz |= fabsf(dz) < 0.25f;
+            saw_large_dz |= fabsf(dz) > 4.0f;
+            saw_backward_ring |= dot3(segment, rings[i + 1].normal) < 0.0f;
+            saw_opposed_normals |= dot3(rings[i].normal, rings[i + 1].normal) < 0.0f;
+        }
+    }
+
+    assert(saw_positive_dz);
+    assert(saw_negative_dz);
+    assert(saw_small_dz);
+    assert(saw_large_dz);
+    assert(saw_backward_ring);
+    assert(saw_opposed_normals);
+}
+
+static void assert_extreme_accepts_unrestricted_geometry(RaceConfig config) {
+    Target rings[3] = {
+        make_race_ring((Vec3){0.0f, 0.0f, 0.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS),
+        make_race_ring((Vec3){16.0f, 0.0f, 0.0f}, (Vec3){-1.0f, 0.0f, 0.0f}, RING_RADIUS),
+        make_race_ring((Vec3){0.0f, 0.0f, 0.0f}, (Vec3){0.0f, 0.0f, 1.0f}, RING_RADIUS),
+    };
+    assert(race_course_is_valid_open(rings, 3, config, true));
+
+    RaceConfig constrained = config;
+    constrained.course_mode = RACE_COURSE_RANDOM;
+    assert(!race_course_is_valid_open(rings, 3, constrained, true));
 }
 
 static void assert_final_ring_is_finish(Target* rings, int num_rings) {
@@ -146,6 +205,11 @@ int main(void) {
         .min_spacing = 7.0f,
         .max_spacing = 16.0f,
     };
+    RaceConfig extreme_config = {
+        .course_mode = RACE_COURSE_EXTREME,
+        .min_spacing = 16.0f,
+        .max_spacing = 24.0f,
+    };
     RaceConfig unknown_config = {
         .course_mode = 999,
         .min_spacing = 7.0f,
@@ -155,6 +219,9 @@ int main(void) {
     assert_lookahead_helpers();
     assert_generated_courses(straight_config);
     assert_generated_courses(random_config);
+    assert_generated_courses(extreme_config);
+    assert_extreme_distribution(extreme_config);
+    assert_extreme_accepts_unrestricted_geometry(extreme_config);
     assert_generated_courses(unknown_config);
 
     puts("drone race geometry checks passed");
