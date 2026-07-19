@@ -40,6 +40,7 @@ struct DroneEnv {
     float alpha_hover;
     float alpha_shaping;
     float alpha_omega;
+    float angular_damping;
     float race_oob_penalty;
     float ring_collision_penalty;
     float race_clean_pass_bonus;
@@ -97,6 +98,11 @@ void add_log(DroneEnv* env, int idx, bool oob, bool timeout) {
     env->log.ema_dist += agent->ema_dist;
     env->log.ema_vel += agent->ema_vel;
     env->log.ema_omega += agent->ema_omega;
+    env->log.ema_abs_omega_x += agent->ema_abs_omega_x;
+    env->log.ema_abs_omega_y += agent->ema_abs_omega_y;
+    env->log.ema_abs_omega_z += agent->ema_abs_omega_z;
+    env->log.omega_x_saturation += agent->omega_x_saturation / (float)agent->episode_length;
+    env->log.ema_abs_roll_command += agent->ema_abs_roll_command;
     env->log.race_corner_speed_penalty += agent->race_corner_speed_penalty;
     env->log.race_lookahead_reward += agent->race_lookahead_reward;
     if (agent->episode_length > 0) {
@@ -137,6 +143,11 @@ void reset_agent(DroneEnv* env, Drone* agent) {
     agent->ema_dist = 0.0f;
     agent->ema_vel = 0.0f;
     agent->ema_omega = 0.0f;
+    agent->ema_abs_omega_x = 0.0f;
+    agent->ema_abs_omega_y = 0.0f;
+    agent->ema_abs_omega_z = 0.0f;
+    agent->omega_x_saturation = 0.0f;
+    agent->ema_abs_roll_command = 0.0f;
     agent->race_corner_speed_penalty = 0.0f;
     agent->race_lookahead_reward = 0.0f;
     agent->race_speed = 0.0f;
@@ -146,6 +157,7 @@ void reset_agent(DroneEnv* env, Drone* agent) {
     agent->buffer_idx = 0;
 
     init_drone(agent, &env->rng, 0.05f);
+    agent->params.k_ang_damp = env->angular_damping;
 
     if (env->task == RACE) {
         Target* start_ring = &env->ring_buffer[0];
@@ -210,6 +222,21 @@ void c_step(DroneEnv* env) {
         agent->prev_pos = agent->state.pos;
         move_drone(agent, &env->actions[4 * i]);
         agent->episode_length++;
+
+        const float telemetry_alpha = 0.01f;
+        agent->ema_abs_omega_x = (1.0f - telemetry_alpha) * agent->ema_abs_omega_x
+            + telemetry_alpha * fabsf(agent->state.omega.x);
+        agent->ema_abs_omega_y = (1.0f - telemetry_alpha) * agent->ema_abs_omega_y
+            + telemetry_alpha * fabsf(agent->state.omega.y);
+        agent->ema_abs_omega_z = (1.0f - telemetry_alpha) * agent->ema_abs_omega_z
+            + telemetry_alpha * fabsf(agent->state.omega.z);
+        if (fabsf(agent->state.omega.x) >= 0.99f * agent->params.max_omega) {
+            agent->omega_x_saturation += 1.0f;
+        }
+        float* action = &env->actions[4 * i];
+        float roll_command = (action[2] + action[3]) - (action[0] + action[1]);
+        agent->ema_abs_roll_command = (1.0f - telemetry_alpha) * agent->ema_abs_roll_command
+            + telemetry_alpha * fabsf(roll_command);
 
         bool oob = false;
         bool timeout = (agent->episode_length >= HORIZON);

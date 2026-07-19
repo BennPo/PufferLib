@@ -17,6 +17,7 @@ void my_init(Env* env, Dict* kwargs) {
     env->alpha_hover = dict_get(kwargs, "alpha_hover")->value;
     env->alpha_shaping = dict_get(kwargs, "alpha_shaping")->value;
     env->alpha_omega = dict_get(kwargs, "alpha_omega")->value;
+    env->angular_damping = dict_get(kwargs, "angular_damping")->value;
     env->race_oob_penalty = dict_get(kwargs, "race_oob_penalty")->value;
     env->ring_collision_penalty = dict_get(kwargs, "ring_collision_penalty")->value;
     env->race_clean_pass_bonus = dict_get(kwargs, "race_clean_pass_bonus")->value;
@@ -48,6 +49,11 @@ void my_log(Log* log, Dict* out) {
     dict_set(out, "ema_dist", log->ema_dist);
     dict_set(out, "ema_vel", log->ema_vel);
     dict_set(out, "ema_omega", log->ema_omega);
+    dict_set(out, "ema_abs_omega_x", log->ema_abs_omega_x);
+    dict_set(out, "ema_abs_omega_y", log->ema_abs_omega_y);
+    dict_set(out, "ema_abs_omega_z", log->ema_abs_omega_z);
+    dict_set(out, "omega_x_saturation", log->omega_x_saturation);
+    dict_set(out, "ema_abs_roll_command", log->ema_abs_roll_command);
     dict_set(out, "race_corner_speed_penalty", log->race_corner_speed_penalty);
     dict_set(out, "race_lookahead_reward", log->race_lookahead_reward);
     dict_set(out, "race_speed", log->race_speed);

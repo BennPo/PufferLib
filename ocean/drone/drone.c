@@ -40,6 +40,7 @@ int main() {
     env->alpha_hover = 0.071445f;
     env->alpha_shaping = 3.9754f;
     env->alpha_omega = 0.00135588f;
+    env->angular_damping = 2.0e-6f;
     env->race_oob_penalty = 1.0f;
     env->ring_collision_penalty = 0.0f;
     env->race_clean_pass_bonus = 0.5f;

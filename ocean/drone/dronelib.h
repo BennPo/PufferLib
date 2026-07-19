@@ -66,6 +66,11 @@ struct Log {
     float ema_dist;
     float ema_vel;
     float ema_omega;
+    float ema_abs_omega_x;
+    float ema_abs_omega_y;
+    float ema_abs_omega_z;
+    float omega_x_saturation;
+    float ema_abs_roll_command;
     float race_corner_speed_penalty;
     float race_lookahead_reward;
     float race_speed;
@@ -174,6 +179,11 @@ typedef struct {
     float ema_dist;
     float ema_vel;
     float ema_omega;
+    float ema_abs_omega_x;
+    float ema_abs_omega_y;
+    float ema_abs_omega_z;
+    float omega_x_saturation;
+    float ema_abs_roll_command;
     float race_corner_speed_penalty;
     float race_lookahead_reward;
     float race_speed;
