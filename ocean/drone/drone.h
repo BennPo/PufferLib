@@ -191,10 +191,17 @@ void sync_agent_progress(DroneEnv* env, Drone* agent) {
 }
 
 RaceConfig race_config(DroneEnv* env) {
+    float min_spacing = env->race_min_spacing;
+    float max_spacing = env->race_max_spacing;
+    if (env->race_course_mode == RACE_COURSE_EXTREME) {
+        min_spacing = 12.0f;
+        max_spacing = 18.0f;
+    }
+
     return (RaceConfig){
         .course_mode = env->race_course_mode,
-        .min_spacing = env->race_min_spacing,
-        .max_spacing = env->race_max_spacing,
+        .min_spacing = min_spacing,
+        .max_spacing = max_spacing,
     };
 }
 

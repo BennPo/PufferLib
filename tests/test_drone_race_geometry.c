@@ -103,7 +103,7 @@ static void assert_extreme_distribution(RaceConfig config) {
 static void assert_extreme_accepts_unrestricted_geometry(RaceConfig config) {
     Target rings[3] = {
         make_race_ring((Vec3){0.0f, 0.0f, 0.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS),
-        make_race_ring((Vec3){16.0f, 0.0f, 0.0f}, (Vec3){-1.0f, 0.0f, 0.0f}, RING_RADIUS),
+        make_race_ring((Vec3){12.0f, 0.0f, 0.0f}, (Vec3){-1.0f, 0.0f, 0.0f}, RING_RADIUS),
         make_race_ring((Vec3){0.0f, 0.0f, 0.0f}, (Vec3){0.0f, 0.0f, 1.0f}, RING_RADIUS),
     };
     assert(race_course_is_valid_open(rings, 3, config, true));
@@ -207,8 +207,8 @@ int main(void) {
     };
     RaceConfig extreme_config = {
         .course_mode = RACE_COURSE_EXTREME,
-        .min_spacing = 16.0f,
-        .max_spacing = 24.0f,
+        .min_spacing = 12.0f,
+        .max_spacing = 18.0f,
     };
     RaceConfig unknown_config = {
         .course_mode = 999,

@@ -7,8 +7,8 @@ Rebuild the drone race course generator around open connected race modes. Mode
 random 3D path. Both modes guarantee that every ring can be flown through
 directly.
 
-Mode `3` is an opt-in extreme course. Each center is sampled 16-24 units from
-the previous center when launched with the recommended spacing overrides, and
+Mode `3` is an opt-in extreme course. Each center is sampled 12-18 units from
+the previous center using an internal mode preset, and
 each ring normal is sampled independently over the sphere. Unlike modes `1`
 and `2`, mode `3` deliberately does not guarantee a direct fly-through from the
 previous ring; backward-facing and otherwise opposed gates are valid.
