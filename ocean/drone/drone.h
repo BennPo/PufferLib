@@ -12,7 +12,7 @@
 #include "dronelib.h"
 #include "tasks.h"
 
-#define HORIZON 2048
+#define HORIZON 8192
 
 typedef struct Client Client;
 typedef struct DroneEnv DroneEnv;
