@@ -124,7 +124,7 @@ void add_log(DroneEnv* env, int idx, bool oob, bool timeout) {
 
 void compute_observations(DroneEnv* env) {
     for (int i = 0; i < env->num_agents; i++) {
-        compute_drone_observations(&env->agents[i], env->observations + i*26);
+        compute_drone_observations(&env->agents[i], env->observations + i*29);
     }
 }
 

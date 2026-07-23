@@ -180,6 +180,35 @@ static void assert_lookahead_helpers(void) {
     assert_near(reset_progress, drone.prev_race_segment_progress);
 }
 
+static void assert_next_ring_normal_observations(void) {
+    Target rings[2] = {
+        make_race_ring((Vec3){2.0f, 0.0f, 0.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS),
+        make_race_ring((Vec3){4.0f, 0.0f, 0.0f}, (Vec3){0.0f, 1.0f, 0.0f}, RING_RADIUS),
+    };
+    Drone drone = {0};
+    drone.params.max_vel = BASE_MAX_VEL;
+    drone.params.max_omega = BASE_MAX_OMEGA;
+    drone.params.max_rpm = BASE_MAX_RPM;
+    drone.state.quat = (Quat){1.0f, 0.0f, 0.0f, 0.0f};
+    drone.target = &rings[0];
+    drone.buffer = rings;
+    drone.buffer_size = 2;
+    drone.buffer_idx = 0;
+
+    float observations[29] = {0};
+    compute_drone_observations(&drone, observations);
+    assert_near(observations[19], 0.0f);
+    assert_near(observations[20], 1.0f);
+    assert_near(observations[21], 0.0f);
+
+    drone.buffer_idx = 1;
+    drone.target = &rings[1];
+    compute_drone_observations(&drone, observations);
+    assert_near(observations[19], 0.0f);
+    assert_near(observations[20], 0.0f);
+    assert_near(observations[21], 0.0f);
+}
+
 static void assert_generated_courses(RaceConfig config) {
     const int ring_counts[] = {5, 10, 16};
     for (int c = 0; c < 3; c++) {
@@ -217,6 +246,7 @@ int main(void) {
     };
 
     assert_lookahead_helpers();
+    assert_next_ring_normal_observations();
     assert_generated_courses(straight_config);
     assert_generated_courses(random_config);
     assert_generated_courses(extreme_config);

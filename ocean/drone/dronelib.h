@@ -1061,11 +1061,13 @@ void compute_drone_observations(Drone* agent, float* observations) {
     Vec3 to_target_world = sub3(agent->target->pos, agent->state.pos);
     Vec3 to_target = quat_rotate(q_inv, to_target_world);
     Vec3 to_next_target = (Vec3){0.0f, 0.0f, 0.0f};
+    Vec3 next_normal_body = (Vec3){0.0f, 0.0f, 0.0f};
     if (agent->buffer != NULL && agent->buffer_size > 1) {
         Target* next_target = next_race_target(agent);
         if (next_target != NULL) {
             Vec3 to_next_target_world = sub3(next_target->pos, agent->state.pos);
             to_next_target = quat_rotate(q_inv, to_next_target_world);
+            next_normal_body = quat_rotate(q_inv, next_target->normal);
         }
     }
 
@@ -1098,6 +1100,10 @@ void compute_drone_observations(Drone* agent, float* observations) {
     observations[idx++] = normal_body.x;
     observations[idx++] = normal_body.y;
     observations[idx++] = normal_body.z;
+
+    observations[idx++] = next_normal_body.x;
+    observations[idx++] = next_normal_body.y;
+    observations[idx++] = next_normal_body.z;
 
     // rpms should always be last in the obs
     observations[idx++] = agent->state.rpms[0] / agent->params.max_rpm;
