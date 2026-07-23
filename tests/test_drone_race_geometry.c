@@ -223,9 +223,32 @@ static void assert_position_alignment_reward(void) {
         race_position_alignment((Vec3){0.0f, 3.0f, 3.0f}, &ring), 0.75f);
     assert_near(race_position_alignment(ring.pos, &ring), 1.0f);
 
-    assert_near(race_alignment_weighted_progress(0.4f, 0.25f, false), 0.1f);
-    assert_near(race_alignment_weighted_progress(-0.4f, 0.25f, false), -0.1f);
-    assert_near(race_alignment_weighted_progress(1.2f, 0.0f, true), 1.2f);
+    Vec3 wrong_side = (Vec3){2.0f, 2.0f, 3.0f};
+    Vec3 lateral = (Vec3){1.0f, 3.0f, 3.0f};
+    float alignment_improvement = race_oriented_progress_reward(
+        wrong_side, lateral, &ring, 0.0f, false);
+    assert(alignment_improvement > 0.0f);
+    assert_near(
+        race_oriented_progress_reward(lateral, wrong_side, &ring, 0.0f, false),
+        -alignment_improvement);
+
+    Vec3 entry_far = (Vec3){-1.0f, 2.0f, 3.0f};
+    Vec3 entry_near = (Vec3){0.0f, 2.0f, 3.0f};
+    assert(race_oriented_progress_reward(
+        entry_far, entry_near, &ring, 0.0f, false) > 0.0f);
+
+    Vec3 wrong_far = (Vec3){3.0f, 2.0f, 3.0f};
+    assert_near(race_oriented_progress_reward(
+        wrong_far, wrong_side, &ring, 0.0f, false), 0.0f);
+
+    Vec3 lateral_farther = (Vec3){1.0f, 3.1f, 3.0f};
+    assert(race_oriented_progress_reward(
+        wrong_side, lateral_farther, &ring, 0.0f, false) > 0.0f);
+
+    assert_near(race_oriented_progress_reward(
+        wrong_side, lateral, &ring, 1.2f, true), 1.2f);
+    assert_near(race_oriented_progress_reward(
+        wrong_side, lateral, &ring, 1.0f, true), 1.0f);
 }
 
 static void assert_position_alignment_all_course_modes(void) {
@@ -253,7 +276,10 @@ static void assert_position_alignment_all_course_modes(void) {
         reset_rings(&rng, rings, 3, configs[i]);
         Vec3 entry_pos = sub3(rings[0].pos, scalmul3(rings[0].normal, 4.0f));
         assert_near(race_position_alignment(entry_pos, &rings[0]), 1.0f);
-        assert_near(race_alignment_weighted_progress(0.25f, 1.0f, false), 0.25f);
+        Vec3 closer_entry_pos = add3(
+            entry_pos, scalmul3(rings[0].normal, 1.0f));
+        assert(race_oriented_progress_reward(
+            entry_pos, closer_entry_pos, &rings[0], 0.0f, false) > 0.0f);
     }
 }
 

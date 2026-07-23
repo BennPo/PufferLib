@@ -1058,12 +1058,19 @@ static inline float race_position_alignment(Vec3 pos, Target* ring) {
     return clampf(1.0f - angle / (float)M_PI, 0.0f, 1.0f);
 }
 
-static inline float race_alignment_weighted_progress(
-        float progress_delta, float positional_alignment, bool clean_pass) {
-    float effective_alignment = clean_pass
-        ? 1.0f
-        : clampf(positional_alignment, 0.0f, 1.0f);
-    return effective_alignment * progress_delta;
+static inline float race_oriented_proximity(Vec3 pos, Target* ring) {
+    return race_target_proximity(pos, ring) * race_position_alignment(pos, ring);
+}
+
+static inline float race_oriented_progress_reward(
+        Vec3 prev_pos, Vec3 current_pos, Target* ring,
+        float absolute_progress_delta, bool clean_pass) {
+    if (clean_pass) {
+        return absolute_progress_delta;
+    }
+
+    return race_oriented_proximity(current_pos, ring)
+        - race_oriented_proximity(prev_pos, ring);
 }
 
 static inline float race_absolute_progress(Vec3 pos, int rings_passed, Target* ring) {
