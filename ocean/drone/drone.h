@@ -299,7 +299,11 @@ void c_step(DroneEnv* env) {
             float current_progress = race_complete
                 ? (float)agent->buffer_size
                 : race_absolute_progress(agent->state.pos, agent->rings_passed, agent->target);
-            reward += current_progress - agent->prev_race_progress;
+            float progress_delta = current_progress - agent->prev_race_progress;
+            float positional_alignment = race_position_alignment(
+                agent->state.pos, current_target);
+            reward += race_alignment_weighted_progress(
+                progress_delta, positional_alignment, ring_state == 1);
             agent->prev_race_progress = current_progress;
 
             if (ring_state == 0 && !oob && !timeout) {

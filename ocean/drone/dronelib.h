@@ -1044,6 +1044,28 @@ static inline float race_target_proximity(Vec3 pos, Target* ring) {
     return clampf(proximity, 0.0f, 1.0f);
 }
 
+static inline float race_position_alignment(Vec3 pos, Target* ring) {
+    Vec3 offset = sub3(pos, ring->pos);
+    float offset_len = norm3(offset);
+    if (offset_len <= 1e-6f) {
+        return 1.0f;
+    }
+
+    Vec3 direction_from_ring = scalmul3(offset, 1.0f / offset_len);
+    Vec3 entry_direction = scalmul3(ring->normal, -1.0f);
+    float direction_dot = clampf(dot3(direction_from_ring, entry_direction), -1.0f, 1.0f);
+    float angle = acosf(direction_dot);
+    return clampf(1.0f - angle / (float)M_PI, 0.0f, 1.0f);
+}
+
+static inline float race_alignment_weighted_progress(
+        float progress_delta, float positional_alignment, bool clean_pass) {
+    float effective_alignment = clean_pass
+        ? 1.0f
+        : clampf(positional_alignment, 0.0f, 1.0f);
+    return effective_alignment * progress_delta;
+}
+
 static inline float race_absolute_progress(Vec3 pos, int rings_passed, Target* ring) {
     return (float)rings_passed + race_target_proximity(pos, ring);
 }

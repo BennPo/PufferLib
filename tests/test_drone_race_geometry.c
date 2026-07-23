@@ -209,6 +209,54 @@ static void assert_next_ring_normal_observations(void) {
     assert_near(observations[21], 0.0f);
 }
 
+static void assert_position_alignment_reward(void) {
+    Target ring = make_race_ring(
+        (Vec3){1.0f, 2.0f, 3.0f}, (Vec3){1.0f, 0.0f, 0.0f}, RING_RADIUS);
+
+    assert_near(
+        race_position_alignment((Vec3){0.0f, 2.0f, 3.0f}, &ring), 1.0f);
+    assert_near(
+        race_position_alignment((Vec3){1.0f, 3.0f, 3.0f}, &ring), 0.5f);
+    assert_near(
+        race_position_alignment((Vec3){2.0f, 2.0f, 3.0f}, &ring), 0.0f);
+    assert_near(
+        race_position_alignment((Vec3){0.0f, 3.0f, 3.0f}, &ring), 0.75f);
+    assert_near(race_position_alignment(ring.pos, &ring), 1.0f);
+
+    assert_near(race_alignment_weighted_progress(0.4f, 0.25f, false), 0.1f);
+    assert_near(race_alignment_weighted_progress(-0.4f, 0.25f, false), -0.1f);
+    assert_near(race_alignment_weighted_progress(1.2f, 0.0f, true), 1.2f);
+}
+
+static void assert_position_alignment_all_course_modes(void) {
+    const RaceConfig configs[] = {
+        {
+            .course_mode = RACE_COURSE_STRAIGHT,
+            .min_spacing = 7.0f,
+            .max_spacing = 16.0f,
+        },
+        {
+            .course_mode = RACE_COURSE_RANDOM,
+            .min_spacing = 7.0f,
+            .max_spacing = 16.0f,
+        },
+        {
+            .course_mode = RACE_COURSE_EXTREME,
+            .min_spacing = 12.0f,
+            .max_spacing = 18.0f,
+        },
+    };
+
+    for (int i = 0; i < 3; i++) {
+        Target rings[3] = {0};
+        unsigned int rng = 1234u + (unsigned int)i;
+        reset_rings(&rng, rings, 3, configs[i]);
+        Vec3 entry_pos = sub3(rings[0].pos, scalmul3(rings[0].normal, 4.0f));
+        assert_near(race_position_alignment(entry_pos, &rings[0]), 1.0f);
+        assert_near(race_alignment_weighted_progress(0.25f, 1.0f, false), 0.25f);
+    }
+}
+
 static void assert_generated_courses(RaceConfig config) {
     const int ring_counts[] = {5, 10, 16};
     for (int c = 0; c < 3; c++) {
@@ -247,6 +295,8 @@ int main(void) {
 
     assert_lookahead_helpers();
     assert_next_ring_normal_observations();
+    assert_position_alignment_reward();
+    assert_position_alignment_all_course_modes();
     assert_generated_courses(straight_config);
     assert_generated_courses(random_config);
     assert_generated_courses(extreme_config);
